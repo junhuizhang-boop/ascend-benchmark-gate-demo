@@ -1,8 +1,8 @@
 {
   "schemaVersion": "ascend-pr-two-stage/v1",
-  "updatedAt": "2026-06-02T10:04:22.890408+00:00",
+  "updatedAt": "2026-06-02T10:14:17.981410+00:00",
   "source": {
-    "runUrl": "https://github.com/junhuizhang-boop/ascend-benchmark-gate-demo/actions/runs/26812762838",
+    "runUrl": "https://github.com/junhuizhang-boop/ascend-benchmark-gate-demo/actions/runs/26813232441",
     "prNumber": "1",
     "branch": "feat/two-stage-gate-demo"
   },
@@ -13,9 +13,9 @@
     "rebaseStatus": "clean",
     "commits": {
       "m1": "d4314dfe",
-      "b1": "29127352",
+      "b1": "8218c30c",
       "m2": "d4314dfe",
-      "b1p": "29127352"
+      "b1p": "8218c30c"
     },
     "stages": [
       {
@@ -25,7 +25,7 @@
         "candidateLabel": "B1",
         "result": "PASS",
         "baselineSha": "d4314dfe",
-        "candidateSha": "29127352",
+        "candidateSha": "8218c30c",
         "baseline": {
           "requestThroughput": 0.9,
           "outputThroughput": 230.0,
@@ -33,9 +33,9 @@
           "failed": 0
         },
         "candidate": {
-          "requestThroughput": 0.9,
-          "outputThroughput": 230.0,
-          "meanTtftMs": 380.0,
+          "requestThroughput": 0.98,
+          "outputThroughput": 252.0,
+          "meanTtftMs": 348.0,
           "failed": 0
         }
       },
@@ -46,7 +46,7 @@
         "candidateLabel": "B1'",
         "result": "PASS",
         "baselineSha": "d4314dfe",
-        "candidateSha": "29127352",
+        "candidateSha": "8218c30c",
         "baseline": {
           "requestThroughput": 0.9,
           "outputThroughput": 230.0,
@@ -54,13 +54,13 @@
           "failed": 0
         },
         "candidate": {
-          "requestThroughput": 0.9,
-          "outputThroughput": 230.0,
-          "meanTtftMs": 380.0,
+          "requestThroughput": 0.98,
+          "outputThroughput": 252.0,
+          "meanTtftMs": 348.0,
           "failed": 0
         }
       }
     ]
   },
-  "summaryMarkdown": "## Ascend Benchmark Gate Result\n\n- M1 (merge-base): `d4314dfe`\n- B1 (PR head): `29127352`\n- M2 (current main): `d4314dfe`\n\n### Stage 1 · M1 vs B1\n- Result: **PASS**\n- Baseline `M1`: `d4314dfe`\n- Candidate `B1`: `29127352`\n\n| Metric | Baseline | Candidate | Rule | Status |\n|---|---:|---:|---|---|\n| output_throughput | `230` | `230` | `B1 >= M1 * 0.97` | **PASS** |\n| request_throughput | `0.9` | `0.9` | `B1 >= M1 * 0.97` | **PASS** |\n| mean_ttft_ms | `380` | `380` | `B1 <= M1 * 1.05` | **PASS** |\n| failed | `0` | `0` | `B1.failed <= 0` | **PASS** |\n\n### Stage 2 · M2 vs B1-prime\n- Result: **PASS**\n- Baseline `M2`: `d4314dfe`\n- Candidate `B1-prime`: `29127352`\n\n| Metric | Baseline | Candidate | Rule | Status |\n|---|---:|---:|---|---|\n| output_throughput | `230` | `230` | `B1-prime >= M2 * 0.97` | **PASS** |\n| request_throughput | `0.9` | `0.9` | `B1-prime >= M2 * 0.97` | **PASS** |\n| mean_ttft_ms | `380` | `380` | `B1-prime <= M2 * 1.05` | **PASS** |\n| failed | `0` | `0` | `B1-prime.failed <= 0` | **PASS** |\n\nFinal result: **PASS**\n"
+  "summaryMarkdown": "## Ascend Benchmark Gate Result\n\n- M1 (merge-base): `d4314dfe`\n- B1 (PR head): `8218c30c`\n- M2 (current main): `d4314dfe`\n\n### Stage 1 · M1 vs B1\n- Result: **PASS**\n- Baseline `M1`: `d4314dfe`\n- Candidate `B1`: `8218c30c`\n\n| Metric | Baseline | Candidate | Rule | Status |\n|---|---:|---:|---|---|\n| output_throughput | `230` | `252` | `B1 >= M1 * 0.97` | **PASS** |\n| request_throughput | `0.9` | `0.98` | `B1 >= M1 * 0.97` | **PASS** |\n| mean_ttft_ms | `380` | `348` | `B1 <= M1 * 1.05` | **PASS** |\n| failed | `0` | `0` | `B1.failed <= 0` | **PASS** |\n\n### Stage 2 · M2 vs B1-prime\n- Result: **PASS**\n- Baseline `M2`: `d4314dfe`\n- Candidate `B1-prime`: `8218c30c`\n\n| Metric | Baseline | Candidate | Rule | Status |\n|---|---:|---:|---|---|\n| output_throughput | `230` | `252` | `B1-prime >= M2 * 0.97` | **PASS** |\n| request_throughput | `0.9` | `0.98` | `B1-prime >= M2 * 0.97` | **PASS** |\n| mean_ttft_ms | `380` | `348` | `B1-prime <= M2 * 1.05` | **PASS** |\n| failed | `0` | `0` | `B1-prime.failed <= 0` | **PASS** |\n\nFinal result: **PASS**\n"
 }
