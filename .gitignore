@@ -1,3 +1,8 @@
 .DS_Store
 node_modules/
 dist/
+.gate-results/
+.gate-results-local/
+
+__pycache__/
+*.pyc

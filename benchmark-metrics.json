@@ -1,0 +1,9 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "scenario": "random-online",
+  "hardware": "Ascend 910B3 mock",
+  "request_throughput": 0.90,
+  "output_throughput": 230.0,
+  "mean_ttft_ms": 380.0,
+  "failed": 0
+}
