@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "ascend-merged-benchmark/v1",
+  "updatedAt": "2026-06-02T00:00:00Z",
+  "records": [
+    {
+      "id": "merged-demo-pass",
+      "label": "已合并 · demo-pass · PASS",
+      "finalStatus": "PASS",
+      "rebaseStatus": "merged",
+      "mergedAt": "2026-06-02T00:00:00Z",
+      "source": {
+        "branch": "main",
+        "sha": "demo-pass",
+        "runUrl": ""
+      },
+      "commits": {
+        "m1": "PR门控",
+        "b1": "demo-pass",
+        "m2": "main",
+        "b1p": "demo-pass"
+      },
+      "stages": [
+        {
+          "id": "merged",
+          "title": "已合并性能记录",
+          "baselineLabel": "main accepted",
+          "candidateLabel": "demo-pass",
+          "result": "PASS",
+          "baselineSha": "main",
+          "candidateSha": "demo-pass",
+          "baseline": { "requestThroughput": 0.98, "outputThroughput": 252.0, "meanTtftMs": 348.0, "failed": 0 },
+          "candidate": { "requestThroughput": 0.98, "outputThroughput": 252.0, "meanTtftMs": 348.0, "failed": 0 }
+        }
+      ],
+      "metrics": {
+        "model": "Qwen/Qwen2.5-7B-Instruct",
+        "scenario": "random-online-pr-action-simulation",
+        "hardware": "Ascend 910B3 mock via GitHub Actions",
+        "requestThroughput": 0.98,
+        "outputThroughput": 252.0,
+        "meanTtftMs": 348.0,
+        "failed": 0
+      }
+    }
+  ],
+  "rejectedExamples": [
+    {
+      "branch": "demo/fail-stage-1",
+      "reason": "阶段一性能退化，PR Checks 失败，未合并到 main，因此不会同步到页面。"
+    },
+    {
+      "branch": "demo/fail-stage-2",
+      "reason": "阶段二性能退化，PR Checks 失败，未合并到 main，因此不会同步到页面。"
+    }
+  ]
+}
