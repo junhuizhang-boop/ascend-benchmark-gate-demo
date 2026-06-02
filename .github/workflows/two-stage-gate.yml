@@ -1,0 +1,44 @@
+name: Two-stage Ascend benchmark gate demo
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  two-stage-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Run two-stage gate
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          GATE_ROOT: ${{ github.workspace }}/.gate-results
+        run: |
+          bash scripts/run_two_stage_gate.sh
+
+      - name: Publish gate summary
+        if: always()
+        run: |
+          if [[ -f .gate-results/summary.md ]]; then
+            cat .gate-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-stage-gate-results
+          path: .gate-results/
+          include-hidden-files: true
+          if-no-files-found: warn

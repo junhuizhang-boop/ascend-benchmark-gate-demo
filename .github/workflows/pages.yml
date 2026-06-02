@@ -21,14 +21,30 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish merged benchmark record
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 scripts/export_accepted_frontend.py \
+            --metrics benchmark-metrics.json \
+            --output data/accepted-runs.json \
+            --sha "${{ github.sha }}" \
+            --run-url "$RUN_URL" \
+            --branch main
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

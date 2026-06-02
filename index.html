@@ -1245,89 +1245,89 @@
         </button>
 
         <div class="badges">
-          <span class="badge">🇨🇳 Domestic Hardware</span>
-          <span class="badge">📊 Benchmark First</span>
-          <span class="badge">🧪 PR Gate Demo</span>
+          <span class="badge">🇨🇳 国产硬件</span>
+          <span class="badge">📊 性能优先</span>
+          <span class="badge">🧪 PR 门控演示</span>
         </div>
         <div class="release-banner">
-          <div style="font-weight: 800; font-size: 1.08rem">Ascend Benchmark Gate Demo</div>
+          <div style="font-weight: 800; font-size: 1.08rem">Ascend 性能门控演示</div>
           <div style="margin-top: 8px; color: rgba(255, 255, 255, 0.88)">
-            Copied vllm-hust-website visual styles, with a simulated two-stage PR performance gate.
+            参考 vllm-hust-website 的页面风格，用真实 GitHub Actions 跑两阶段 PR 性能门控。
           </div>
         </div>
         <h1>vllm-hust</h1>
         <p class="subtitle">
-          Two-stage Ascend PR benchmark gate: B1 vs M1, then B1′ vs M2 after local rebase.
+          Ascend PR 两阶段性能门控：先比较 B1 与分支起点 M1，再将 PR 本地 rebase 到最新 main 后比较 B1′ 与 M2。
         </p>
 
         <div class="hero-install">
-          <code>Qwen/Qwen2.5-7B-Instruct · gate-only · no leaderboard publish</code>
+          <code>Qwen/Qwen2.5-7B-Instruct · 门控结果发布 · 前端数据由 CI 更新</code>
         </div>
       </header>
 
       <div class="leaderboard-section" id="benchmark-gate">
         <div class="leaderboard-heading">
           <div>
-            <div class="leaderboard-eyebrow">vLLM Benchmark Gate</div>
-            <h2>Two-stage performance gate result</h2>
+            <div class="leaderboard-eyebrow">vLLM 性能门控</div>
+            <h2>两阶段性能门控结果</h2>
             <p>
-              This demo keeps the complete visual styling copied from <code>vllm-hust-website</code>, then replaces the leaderboard data surface with a PR benchmark gate simulation.
+              页面只读取 <code>data/accepted-runs.json</code> 中的已合并成功记录。PR 性能不达标时 Checks 失败、不能合并，因此不会同步到页面；PR 性能通过并合并到 main 后，Pages workflow 才会发布到页面。
             </p>
           </div>
           <div class="leaderboard-schema-pill">
-            <span>Gate policy</span>
+            <span>门控策略</span>
             <strong>ascend-pr-two-stage/v1</strong>
           </div>
         </div>
 
         <div class="tab-nav">
-          <button class="tab-button active" type="button">PR Benchmark Gate</button>
-          <button class="tab-button" type="button">Small Model · 7B</button>
-          <button class="tab-button" type="button">No Leaderboard Publish</button>
+          <button class="tab-button active" type="button">PR 性能门控</button>
+          <button class="tab-button" type="button">小模型 · 7B</button>
+          <button class="tab-button" type="button">门控结果发布</button>
         </div>
 
         <div class="gate-toolbar">
-          <label for="scenarioSelect">Scenario</label>
+          <label for="scenarioSelect">场景</label>
           <select id="scenarioSelect"></select>
         </div>
 
-        <p class="leaderboard-meta">Loaded 4 mock gate scenarios • Showing one PR check simulation</p>
+        <p id="gateMeta" class="leaderboard-meta">页面只展示已合并成功记录；失败 PR 会停在 GitHub Checks，不会同步到页面。</p>
         <div id="overview" class="gate-overview"></div>
 
         <div class="hard-constraints-panel" aria-live="polite">
           <div class="hard-constraints-header">
             <div>
-              <h3>Branch topology</h3>
-              <p>Before: B1 diverges from M1. After: CI locally rebases B1 on M2 and measures B1′.</p>
+              <h3>分支拓扑</h3>
+              <p>门控流程：B1 从 M1 分叉；CI 再把 B1 本地 rebase 到 M2 生成 B1′，分别读取这些 commit 的性能数据进行比较。</p>
             </div>
             <div class="hard-constraints-summary">
-              <span id="rebaseBadge" class="gate-status neutral">rebase pending</span>
+              <span id="rebaseBadge" class="gate-status neutral">rebase 待执行</span>
             </div>
           </div>
-          <div id="commitGraph" class="gate-graph" aria-label="Git branch topology diagram"></div>
+          <div id="commitGraph" class="gate-graph" aria-label="Git 分支拓扑图"></div>
         </div>
 
         <div id="stageResults" class="gate-stage-grid"></div>
       </div>
 
       <div class="section contributors-section">
-        <div class="section-kicker">CI Mapping</div>
-        <h2>How this maps to the real CI</h2>
+        <div class="section-kicker">CI 对应关系</div>
+        <h2>页面数据如何对应真实 CI</h2>
         <p>
-          The real PR workflow can use the same structure for the GitHub summary/comment while the main branch keeps the formal 14B same-spec leaderboard flow.
+          main push 后的 Pages workflow 会读取合并提交中的 <code>benchmark-metrics.json</code>，生成 <code>data/accepted-runs.json</code> 并部署页面。PR 门控失败的分支不会合并，因此不会进入这个 JSON。
         </p>
         <div class="gate-note-grid">
           <article>
-            <h3>Stage 1: branch-local gain</h3>
-            <p>B1 is compared with M1, the commit where the branch diverged. This proves the PR branch improved over its own starting point.</p>
+            <h3>阶段一：分支内比较</h3>
+            <p>B1 与 M1 比较。M1 是 PR 分支分叉点；如果 B1 在吞吐、TTFT 或失败数上不达标，说明 PR 自身引入了性能退化。</p>
           </article>
           <article>
-            <h3>Stage 2: current-main gain</h3>
-            <p>CI locally rebases B1 onto current main M2 to create B1′, then compares B1′ with M2.</p>
+            <h3>阶段二：最新 main 比较</h3>
+            <p>CI 将 B1 本地 rebase 到 M2 得到 B1′，再比较 B1′ 与 M2。这样可以发现 main 更新后 PR 是否仍然满足性能门槛。</p>
           </article>
           <article>
-            <h3>Manual intervention boundary</h3>
-            <p>CI can rebase locally for measurement, but should not push B1′. Conflicts or regressions are fixed by the developer.</p>
+            <h3>人工处理边界</h3>
+            <p>CI 只在本地 rebase 用于测量，不会把 B1′ 推回远端。rebase 冲突或性能退化需要开发者修复后重新触发 PR 检查。</p>
           </article>
         </div>
       </div>
