@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ascend Benchmark Gate Demo</title>
+    <meta
+      name="description"
+      content="Two-stage Ascend benchmark performance gate demo for PR branches, inspired by the vllm-hust leaderboard site."
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Code&family=Sora:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="hero">
+        <div class="hero-grid"></div>
+        <div class="eyebrow">vLLM-HUST Ascend CI · Demo</div>
+        <h1>Ascend Benchmark Gate</h1>
+        <p class="subtitle">
+          A frontend mockup for the two-stage PR performance gate: compare <strong>B1 vs M1</strong>, then rebase and compare <strong>B1′ vs M2</strong> before allowing merge.
+        </p>
+        <div class="badges">
+          <span class="badge">Qwen2.5-7B PR gate</span>
+          <span class="badge">No leaderboard publish</span>
+          <span class="badge">Two-stage comparison</span>
+          <span class="badge">910B3 mock data</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="leaderboard-section gate-shell">
+          <div class="leaderboard-heading">
+            <div>
+              <span class="leaderboard-eyebrow">PR Check Simulation</span>
+              <h2>Two-stage performance gate result</h2>
+              <p>
+                This page references the visual language of <code>vllm-hust-website</code> and simulates how a GitHub PR check/comment could explain the gate.
+              </p>
+            </div>
+            <div class="leaderboard-schema-pill">
+              <span>Policy</span>
+              <strong>ascend-pr-two-stage/v1</strong>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <label for="scenarioSelect">Scenario</label>
+            <select id="scenarioSelect"></select>
+          </div>
+
+          <div id="overview" class="overview-grid"></div>
+
+          <section class="graph-card">
+            <div class="card-heading">
+              <div>
+                <h3>Branch topology</h3>
+                <p>Before: B1 diverges from M1. After: B1 is replayed on M2 as B1′.</p>
+              </div>
+              <span id="rebaseBadge" class="status-badge neutral">rebase pending</span>
+            </div>
+            <div id="commitGraph" class="commit-graph" aria-label="Git branch topology diagram"></div>
+          </section>
+
+          <div id="stageResults" class="stage-grid"></div>
+        </section>
+
+        <section class="section notes-section">
+          <h2>How this maps to the real CI</h2>
+          <div class="note-grid">
+            <article>
+              <h3>Stage 1: branch-local gain</h3>
+              <p>B1 is compared with M1, the base commit where the branch diverged. This proves the PR branch improved over its own starting point.</p>
+            </article>
+            <article>
+              <h3>Stage 2: current-main gain</h3>
+              <p>CI locally rebases B1 onto current main M2 to create B1′, then compares B1′ with M2. This proves the optimization still helps on latest main.</p>
+            </article>
+            <article>
+              <h3>Manual intervention boundary</h3>
+              <p>CI may rebase locally for measurement, but it should not push B1′. Rebase conflicts or performance regressions are fixed manually by the developer.</p>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./data/mock-runs.js"></script>
+    <script src="./assets/app.js"></script>
+  </body>
+</html>
