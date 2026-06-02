@@ -87,7 +87,7 @@ def main() -> int:
         },
         "scenario": {
             "id": "latest-ci",
-            "label": f"LATEST CI · {final_status}",
+            "label": f"最新 CI · {final_status}",
             "finalStatus": final_status,
             "rebaseStatus": "clean" if commits.get("B1_REBASED_SHA") else "not-run",
             "commits": {

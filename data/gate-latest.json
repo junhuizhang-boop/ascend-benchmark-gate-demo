@@ -8,7 +8,7 @@
   },
   "scenario": {
     "id": "latest-ci",
-    "label": "LATEST CI · PASS",
+    "label": "最新 CI · PASS",
     "finalStatus": "PASS",
     "rebaseStatus": "clean",
     "commits": {
