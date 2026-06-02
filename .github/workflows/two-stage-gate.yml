@@ -3,10 +3,12 @@ name: Two-stage Ascend benchmark gate demo
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - 'data/gate-latest.json'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -33,6 +35,30 @@ jobs:
           if [[ -f .gate-results/summary.md ]]; then
             cat .gate-results/summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - name: Export frontend data
+        if: success()
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        run: |
+          git fetch origin "$HEAD_BRANCH:$HEAD_BRANCH" || true
+          git switch "$HEAD_BRANCH" || true
+          python3 scripts/export_gate_frontend.py \
+            --gate-root .gate-results \
+            --output data/gate-latest.json \
+            --run-url "$RUN_URL" \
+            --pr-number "$PR_NUMBER" \
+            --branch "$HEAD_BRANCH"
+
+      - name: Commit frontend update
+        if: success() && github.event_name == 'pull_request'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: publish latest gate result"
+          file_pattern: data/gate-latest.json
+          branch: ${{ github.event.pull_request.head.ref }}
 
       - name: Upload gate artifacts
         if: always()

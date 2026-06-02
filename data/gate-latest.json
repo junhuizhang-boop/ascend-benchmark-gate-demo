@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "ascend-pr-two-stage/v1",
+  "updatedAt": "2026-06-02T00:00:00Z",
+  "source": {
+    "runUrl": "",
+    "prNumber": "",
+    "branch": "seed"
+  },
+  "scenario": {
+    "id": "latest-ci",
+    "label": "LATEST CI · PASS",
+    "finalStatus": "PASS",
+    "rebaseStatus": "clean",
+    "commits": {
+      "m1": "d4314dfe",
+      "b1": "ec0677c6",
+      "m2": "d4314dfe",
+      "b1p": "ec0677c6"
+    },
+    "stages": [
+      {
+        "id": "stage1",
+        "title": "Stage 1 · Original branch baseline",
+        "baselineLabel": "M1",
+        "candidateLabel": "B1",
+        "result": "PASS",
+        "baselineSha": "d4314dfe",
+        "candidateSha": "ec0677c6",
+        "baseline": {
+          "requestThroughput": 0.9,
+          "outputThroughput": 230.0,
+          "meanTtftMs": 380.0,
+          "failed": 0
+        },
+        "candidate": {
+          "requestThroughput": 0.9,
+          "outputThroughput": 230.0,
+          "meanTtftMs": 380.0,
+          "failed": 0
+        }
+      },
+      {
+        "id": "stage2",
+        "title": "Stage 2 · Current main baseline",
+        "baselineLabel": "M2",
+        "candidateLabel": "B1'",
+        "result": "PASS",
+        "baselineSha": "d4314dfe",
+        "candidateSha": "ec0677c6",
+        "baseline": {
+          "requestThroughput": 0.9,
+          "outputThroughput": 230.0,
+          "meanTtftMs": 380.0,
+          "failed": 0
+        },
+        "candidate": {
+          "requestThroughput": 0.9,
+          "outputThroughput": 230.0,
+          "meanTtftMs": 380.0,
+          "failed": 0
+        }
+      }
+    ]
+  },
+  "summaryMarkdown": "Seed latest CI payload. GitHub Actions overwrites this after the gate runs."
+}

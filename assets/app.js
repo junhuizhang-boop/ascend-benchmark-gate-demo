@@ -6,6 +6,7 @@
   const stageResults = document.getElementById('stageResults');
   const graph = document.getElementById('commitGraph');
   const rebaseBadge = document.getElementById('rebaseBadge');
+  const meta = document.getElementById('gateMeta');
 
   function fmt(n, unit='') { return typeof n === 'number' ? `${n.toFixed(n >= 10 ? 1 : 2)}${unit}` : String(n); }
   function badge(status){ const s=(status||'neutral').toLowerCase(); return `<span class="gate-status ${s==='pass'?'pass':s==='fail'?'fail':'neutral'}">${status}</span>`; }
@@ -43,7 +44,7 @@
       <div class="gate-tile"><div class="gate-tile-label">Final Result</div><div class="gate-tile-value">${badge(s.finalStatus)}</div><div class="gate-tile-sub">Both stages must pass</div></div>
       <div class="gate-tile"><div class="gate-tile-label">Model</div><div class="gate-tile-value">7B</div><div class="gate-tile-sub">Qwen/Qwen2.5-7B-Instruct</div></div>
       <div class="gate-tile"><div class="gate-tile-label">Baseline route</div><div class="gate-tile-value">M1 → M2</div><div class="gate-tile-sub">dynamic commit benchmarks</div></div>
-      <div class="gate-tile"><div class="gate-tile-label">Publish mode</div><div class="gate-tile-value">Gate only</div><div class="gate-tile-sub">no same-spec / leaderboard</div></div>`;
+      <div class="gate-tile"><div class="gate-tile-label">Publish mode</div><div class="gate-tile-value">${s.id === 'latest-ci' ? 'CI updated' : 'Gate only'}</div><div class="gate-tile-sub">${s.id === 'latest-ci' ? 'published by GitHub Actions' : 'no same-spec / leaderboard'}</div></div>`;
     rebaseBadge.textContent = `rebase: ${s.rebaseStatus}`;
     rebaseBadge.className = `gate-status ${s.rebaseStatus === 'conflict' ? 'fail' : s.rebaseStatus === 'clean' ? 'pass' : 'neutral'}`;
     renderGraph(s);
@@ -53,7 +54,37 @@
     }
     stageResults.innerHTML = html;
   }
-  scenarios.forEach(s=>{ const option=document.createElement('option'); option.value=s.id; option.textContent=s.label; select.appendChild(option); });
-  select.addEventListener('change', e=>render(e.target.value));
-  render(scenarios[0].id);
+  function updateMeta(source){
+    if (!meta) return;
+    const latest = scenarios.find(s=>s.id==='latest-ci');
+    if (!latest) {
+      meta.textContent = `Loaded ${scenarios.length} mock gate scenarios • Showing one PR check simulation`;
+      return;
+    }
+    const pieces = [`Loaded latest CI result + ${scenarios.length - 1} mock scenarios`];
+    if (source?.branch) pieces.push(`branch ${source.branch}`);
+    if (source?.prNumber) pieces.push(`PR #${source.prNumber}`);
+    meta.textContent = pieces.join(' • ');
+  }
+  async function loadLatestGateResult(){
+    try {
+      const response = await fetch('./data/gate-latest.json', { cache: 'no-cache' });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (error) {
+      console.warn('[gate] latest CI result unavailable, using mock scenarios only', error);
+      return null;
+    }
+  }
+  async function init(){
+    const latest = await loadLatestGateResult();
+    if (latest?.scenario?.stages?.length) {
+      scenarios.unshift(latest.scenario);
+    }
+    scenarios.forEach(s=>{ const option=document.createElement('option'); option.value=s.id; option.textContent=s.label; select.appendChild(option); });
+    updateMeta(latest?.source);
+    select.addEventListener('change', e=>render(e.target.value));
+    render(scenarios[0].id);
+  }
+  init();
 })();

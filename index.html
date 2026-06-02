@@ -1261,7 +1261,7 @@
         </p>
 
         <div class="hero-install">
-          <code>Qwen/Qwen2.5-7B-Instruct · gate-only · no leaderboard publish</code>
+          <code>Qwen/Qwen2.5-7B-Instruct · gate result publish · frontend data updated by CI</code>
         </div>
       </header>
 
@@ -1271,7 +1271,7 @@
             <div class="leaderboard-eyebrow">vLLM Benchmark Gate</div>
             <h2>Two-stage performance gate result</h2>
             <p>
-              This demo keeps the complete visual styling copied from <code>vllm-hust-website</code>, then replaces the leaderboard data surface with a PR benchmark gate simulation.
+              This demo keeps the complete visual styling copied from <code>vllm-hust-website</code>, then updates the page from <code>data/gate-latest.json</code> published by the PR benchmark workflow.
             </p>
           </div>
           <div class="leaderboard-schema-pill">
@@ -1291,7 +1291,7 @@
           <select id="scenarioSelect"></select>
         </div>
 
-        <p class="leaderboard-meta">Loaded 4 mock gate scenarios • Showing one PR check simulation</p>
+        <p id="gateMeta" class="leaderboard-meta">Loaded 4 mock gate scenarios • Showing one PR check simulation</p>
         <div id="overview" class="gate-overview"></div>
 
         <div class="hard-constraints-panel" aria-live="polite">
