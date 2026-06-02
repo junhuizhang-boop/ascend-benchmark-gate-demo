@@ -1,0 +1,51 @@
+/* Demo-only additions on top of copied vllm-hust-website styles. */
+.gate-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 18px 0 24px;
+    padding: 16px;
+    border: 1px solid #dbe7f3;
+    background: rgba(255, 255, 255, 0.75);
+    border-radius: 18px;
+}
+.gate-toolbar label { font-weight: 800; color: #334155; }
+.gate-toolbar select {
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+    color: #0f172a;
+    font-weight: 700;
+    min-width: 300px;
+}
+.gate-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 22px; }
+.gate-tile { border-radius: 20px; border: 1px solid #dbe7f3; background: linear-gradient(180deg, #fff 0%, #f8fbff 100%); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06); padding: 18px; }
+.gate-tile-label { font-size: 0.76rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; }
+.gate-tile-value { margin-top: 8px; font-family: 'Sora', 'Inter', sans-serif; font-size: 1.55rem; font-weight: 800; color: #0f172a; }
+.gate-tile-sub { margin-top: 6px; color: #64748b; font-size: 0.88rem; }
+.gate-status { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; padding: 7px 11px; font-size: 0.78rem; font-weight: 900; border: 1px solid transparent; text-transform: uppercase; letter-spacing: 0.04em; }
+.gate-status.pass { color: #166534; background: #ecfdf5; border-color: #86efac; }
+.gate-status.fail { color: #991b1b; background: #fef2f2; border-color: #fecaca; }
+.gate-status.neutral { color: #075985; background: #e0f2fe; border-color: #7dd3fc; }
+.gate-card { border-radius: 20px; border: 1px solid #dbe7f3; background: linear-gradient(180deg, #fff 0%, #f8fbff 100%); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06); }
+.gate-card-head { padding: 18px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.gate-card-title { font-weight: 900; color: #0f172a; }
+.gate-card-subtitle { color: #64748b; font-size: 0.9rem; margin-top: 4px; }
+.gate-stage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; }
+.gate-sha-row { padding: 14px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.gate-sha-box { border: 1px solid #dbe7f3; border-radius: 14px; padding: 12px; background: #fff; }
+.gate-sha-box span { display: block; font-size: 0.72rem; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.08em; }
+.gate-sha-box code { display: block; margin-top: 5px; font-family: 'Fira Code', monospace; font-weight: 800; color: #0f172a; }
+.gate-graph { overflow-x: auto; padding: 18px; border-radius: 16px; background: #0f172a; color: #e2e8f0; }
+.gate-graph svg { min-width: 980px; width: 100%; height: 310px; }
+.gate-commit-line { stroke: #94a3b8; stroke-width: 3; fill: none; }
+.gate-branch-line { stroke: #22c55e; stroke-width: 3; fill: none; }
+.gate-rebase-line { stroke: #0ea5e9; stroke-width: 3; fill: none; stroke-dasharray: 7 7; }
+.gate-commit-dot { fill: #fff; stroke: #0f172a; stroke-width: 3; }
+.gate-commit-label { font-family: 'Fira Code', monospace; font-size: 14px; font-weight: 800; fill: #e2e8f0; }
+.gate-lane-label { font-family: 'Inter', sans-serif; font-size: 14px; font-weight: 800; fill: #cbd5e1; }
+.gate-rule-text { color: #64748b; font-size: 0.82rem; }
+.gate-note-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.gate-note-grid article { border: 1px solid #dbe7f3; border-radius: 18px; background: #fff; padding: 18px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05); }
+@media (max-width: 900px) { .gate-overview, .gate-stage-grid, .gate-note-grid { grid-template-columns: 1fr; } .gate-toolbar { align-items: flex-start; flex-direction: column; } .gate-toolbar select { width: 100%; min-width: 0; } }
