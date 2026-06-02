@@ -5,5 +5,5 @@
   "request_throughput": 0.98,
   "output_throughput": 252.0,
   "mean_ttft_ms": 348.0,
-  "failed": 0
+  "failed": 1
 }
