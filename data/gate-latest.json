@@ -1,10 +1,10 @@
 {
   "schemaVersion": "ascend-pr-two-stage/v1",
-  "updatedAt": "2026-06-02T00:00:00Z",
+  "updatedAt": "2026-06-02T09:53:21.522589+00:00",
   "source": {
-    "runUrl": "",
-    "prNumber": "",
-    "branch": "seed"
+    "runUrl": "https://github.com/junhuizhang-boop/ascend-benchmark-gate-demo/actions/runs/26812220696",
+    "prNumber": "1",
+    "branch": "feat/two-stage-gate-demo"
   },
   "scenario": {
     "id": "latest-ci",
@@ -13,9 +13,9 @@
     "rebaseStatus": "clean",
     "commits": {
       "m1": "d4314dfe",
-      "b1": "ec0677c6",
+      "b1": "7403fc57",
       "m2": "d4314dfe",
-      "b1p": "ec0677c6"
+      "b1p": "7403fc57"
     },
     "stages": [
       {
@@ -25,7 +25,7 @@
         "candidateLabel": "B1",
         "result": "PASS",
         "baselineSha": "d4314dfe",
-        "candidateSha": "ec0677c6",
+        "candidateSha": "7403fc57",
         "baseline": {
           "requestThroughput": 0.9,
           "outputThroughput": 230.0,
@@ -46,7 +46,7 @@
         "candidateLabel": "B1'",
         "result": "PASS",
         "baselineSha": "d4314dfe",
-        "candidateSha": "ec0677c6",
+        "candidateSha": "7403fc57",
         "baseline": {
           "requestThroughput": 0.9,
           "outputThroughput": 230.0,
@@ -62,5 +62,5 @@
       }
     ]
   },
-  "summaryMarkdown": "Seed latest CI payload. GitHub Actions overwrites this after the gate runs."
+  "summaryMarkdown": "## Ascend Benchmark Gate Result\n\n- M1 (merge-base): `d4314dfe`\n- B1 (PR head): `7403fc57`\n- M2 (current main): `d4314dfe`\n\n### Stage 1 · M1 vs B1\n- Result: **PASS**\n- Baseline `M1`: `d4314dfe`\n- Candidate `B1`: `7403fc57`\n\n| Metric | Baseline | Candidate | Rule | Status |\n|---|---:|---:|---|---|\n| output_throughput | `230` | `230` | `B1 >= M1 * 0.97` | **PASS** |\n| request_throughput | `0.9` | `0.9` | `B1 >= M1 * 0.97` | **PASS** |\n| mean_ttft_ms | `380` | `380` | `B1 <= M1 * 1.05` | **PASS** |\n| failed | `0` | `0` | `B1.failed <= 0` | **PASS** |\n\n### Stage 2 · M2 vs B1-prime\n- Result: **PASS**\n- Baseline `M2`: `d4314dfe`\n- Candidate `B1-prime`: `7403fc57`\n\n| Metric | Baseline | Candidate | Rule | Status |\n|---|---:|---:|---|---|\n| output_throughput | `230` | `230` | `B1-prime >= M2 * 0.97` | **PASS** |\n| request_throughput | `0.9` | `0.9` | `B1-prime >= M2 * 0.97` | **PASS** |\n| mean_ttft_ms | `380` | `380` | `B1-prime <= M2 * 1.05` | **PASS** |\n| failed | `0` | `0` | `B1-prime.failed <= 0` | **PASS** |\n\nFinal result: **PASS**\n"
 }
