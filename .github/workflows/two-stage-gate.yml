@@ -40,4 +40,5 @@ jobs:
         with:
           name: two-stage-gate-results
           path: .gate-results/
+          include-hidden-files: true
           if-no-files-found: warn
