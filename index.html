@@ -1280,6 +1280,25 @@
           </div>
         </div>
 
+        <div class="demo-playbook" aria-label="演示场景说明">
+          <article class="demo-playbook-card pass">
+            <strong>✅ PASS PR</strong>
+            <p><code>demo/pass-clear-pr</code><br />两阶段均通过；可以合并，合并后才进入 Pages 已接受记录。</p>
+          </article>
+          <article class="demo-playbook-card fail">
+            <strong>❌ Stage 1 FAIL</strong>
+            <p><code>demo/fail-stage-1-clear-pr</code><br />B1 相比 M1 已经吞吐下降/延迟升高，PR Checks 直接失败。</p>
+          </article>
+          <article class="demo-playbook-card fail">
+            <strong>❌ Stage 2 FAIL</strong>
+            <p><code>demo/fail-stage-2-regression-pr</code><br />相对旧 M1 有进步，但 rebase 到最新 M2 后退化，因此禁止合并。</p>
+          </article>
+          <article class="demo-playbook-card neutral">
+            <strong>发布口径</strong>
+            <p>Actions 展示成功/失败过程；Pages 只展示已合并 PASS 记录，失败 PR 不进主榜。</p>
+          </article>
+        </div>
+
         <div class="tab-nav">
           <button class="tab-button active" type="button">PR 性能门控</button>
           <button class="tab-button" type="button">小模型 · 7B</button>

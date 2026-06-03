@@ -19,6 +19,25 @@ python3 -m http.server 5173
 
 No build step is required.
 
+## Demo checklist
+
+Use these three GitHub pages together when presenting the gate:
+
+1. **Pull requests**: show one green PASS PR and several red FAIL PRs.
+2. **Actions**: open the matching workflow run to show the exact Stage 1 / Stage 2 table.
+3. **GitHub Pages**: show that only PRs merged into `main` appear in the accepted benchmark records.
+
+Current demo branches are intentionally named for review clarity:
+
+| Branch / PR type | Expected check result | Merge? | What it proves |
+|---|---|---:|---|
+| `demo/pass-clear-pr` | PASS | Yes | Candidate stays within thresholds and may be published after merge. |
+| `demo/fail-stage-1-clear-pr` | FAIL | No | Candidate is already slower than its own branch baseline `M1`. |
+| `demo/fail-errors-clear-pr` | FAIL | No | Even if throughput looks OK, failed requests block the PR. |
+| `demo/fail-stage-2-regression-pr` | FAIL | No | Candidate improves over old `M1`, but regresses after rebasing onto latest `M2`. |
+
+The public page intentionally uses **merged-result semantics**: failed PRs remain visible in Pull requests / Actions, but they are not accepted records and do not enter `data/accepted-runs.json`.
+
 ## Benchmark gate policy
 
 `benchmark-metrics.json` contains the mock benchmark result of the currently checked-out commit:
@@ -209,3 +228,23 @@ git push origin main
 ```
 
 Re-run the PR workflow. Stage 1 should complete, then Stage 2 should fail at the local rebase step and print the manual rebase command.
+
+## How to explain the demo
+
+Short version:
+
+> The PR check is the gate. The Pages site is the accepted-result view. A failing PR can be inspected in Actions, but it is not merged and therefore never appears as an accepted benchmark result on the page.
+
+Suggested walkthrough:
+
+1. Open the Pull requests list and point out the visible green/red status icons.
+2. Open a failing PR run and show the metric table in the GitHub Step Summary.
+3. Open the Stage 2 regression PR and highlight that Stage 1 passes while Stage 2 fails after local rebase onto latest `main`.
+4. Merge only the passing PR.
+5. Open the Pages site and confirm that the accepted records list contains only merged PASS records.
+
+For production vLLM Ascend integration, replace the mock reader in `scripts/read_mock_benchmark.py` with the real benchmark command and keep the same comparison/publication contract:
+
+- PR workflow: benchmark `M1`, `B1`, `M2`, and locally rebased `B1'`; fail on regressions.
+- Main workflow: publish only accepted merged results.
+- Frontend: read accepted results only; do not treat failed PR artifacts as public leaderboard entries.

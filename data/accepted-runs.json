@@ -45,12 +45,16 @@
   ],
   "rejectedExamples": [
     {
-      "branch": "demo/fail-stage-1",
+      "branch": "demo/fail-stage-1-clear-pr",
       "reason": "阶段一性能退化，PR Checks 失败，未合并到 main，因此不会同步到页面。"
     },
     {
-      "branch": "demo/fail-stage-2",
-      "reason": "阶段二性能退化，PR Checks 失败，未合并到 main，因此不会同步到页面。"
+      "branch": "demo/fail-errors-clear-pr",
+      "reason": "存在失败请求 failed > 0，PR Checks 失败，未合并到 main，因此不会同步到页面。"
+    },
+    {
+      "branch": "demo/fail-stage-2-regression-pr",
+      "reason": "相对旧 M1 有进步，但 rebase 到最新 M2 后性能退化，PR Checks 失败，因此不会同步到页面。"
     }
   ]
 }
