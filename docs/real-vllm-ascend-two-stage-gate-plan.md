@@ -1,40 +1,40 @@
-# Real vLLM Ascend Two-Stage Benchmark Gate Implementation Plan
+# 真实 vLLM Ascend 两阶段性能门禁落地方案
 
-> **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
+> **给 Hermes：** 如需按本文实施，使用 subagent-driven-development skill 按任务逐项执行。
 
-**Goal:** Move the working mock demo into a real vLLM Ascend PR performance gate that blocks regressing PRs and publishes only merged PASS results.
+**目标：** 将当前已经跑通的 mock demo 迁移为真实 vLLM Ascend PR 性能门禁：阻止性能退化 PR 合并，并且只发布已合并 PASS 结果。
 
-**Architecture:** Keep the same two-stage topology proven by the demo: benchmark M1 and B1, locally rebase B1 onto latest main M2 to produce B1', then benchmark M2 and B1'. PR workflows only gate and upload artifacts; main workflows publish accepted merged results. The only demo-specific component to replace is the mock benchmark reader.
+**架构：** 保留 demo 已验证的两阶段拓扑：先 benchmark `M1` 与 `B1`，再把 `B1` 本地 rebase 到最新 `main` 的 `M2` 上生成 `B1'`，然后 benchmark `M2` 与 `B1'`。PR workflow 只负责门禁与 artifact 上传；main workflow 只负责发布已合并 accepted results。需要替换的 demo 组件只有 mock benchmark reader。
 
-**Tech Stack:** GitHub Actions, self-hosted Ascend runner, Bash, Python, vLLM `vllm bench serve`, JSON artifacts, GitHub Pages or existing leaderboard publication.
+**技术栈：** GitHub Actions、自托管 Ascend runner、Bash、Python、vLLM `vllm bench serve`、JSON artifacts、GitHub Pages 或现有 leaderboard 发布链路。
 
 ---
 
-## Current Demo Contract
+## 当前 Demo 已验证的契约
 
-The demo already proves the product behavior:
+当前 demo 已经证明这些产品行为：
 
-- PASS PRs show green checks and can merge.
-- Stage 1 FAIL PRs fail before rebase when B1 regresses against M1.
-- Stage 2 FAIL PRs can pass M1 but fail after rebasing onto M2.
-- Request failures (`failed > 0`) block the PR.
-- GitHub Pages reads only merged accepted records; failed PR artifacts are visible only in Actions/Checks.
+- PASS PR 显示绿色 checks，可以合并。
+- Stage 1 FAIL PR 在 rebase 前失败：`B1` 相对 `M1` 已经退化。
+- Stage 2 FAIL PR 可以相对 `M1` 通过，但 rebase 到 `M2` 后失败。
+- 请求失败数不为 0（`failed > 0`）会阻止 PR。
+- GitHub Pages 只读取已合并 accepted records；失败 PR 的 artifacts 只在 Actions/Checks 里可见。
 
-The real implementation should preserve this contract and swap the metric source from `benchmark-metrics.json` to actual vLLM benchmark output.
+真实实现应该保持这个契约，只把指标来源从 `benchmark-metrics.json` 换成真实 vLLM benchmark 输出。
 
-## Ownership and Boundaries
+## 责任边界
 
-| Layer | Owns | Must not do |
+| 层级 | 负责 | 禁止 |
 |---|---|---|
-| PR workflow | Checkout, commit topology, runner selection, artifact upload | Publish failed PRs as accepted results |
-| Benchmark runner script | Start/verify server, run benchmark, normalize metrics JSON | Decide PR merge/publication semantics |
-| Compare script | Apply threshold policy and write PASS/FAIL summaries | Hide failed metrics or silently ignore missing fields |
-| Main publish workflow | Publish merged PASS result after `main` push | Re-run untrusted PR code or ingest failed PR artifacts |
-| Frontend/leaderboard | Render accepted records and explanatory rejected examples | Treat PR preview artifacts as official accepted records |
+| PR workflow | checkout、commit 拓扑、runner 选择、artifact 上传 | 把失败 PR 发布为 accepted result |
+| benchmark runner 脚本 | 启动/检查服务、运行 benchmark、归一化 metrics JSON | 决定 PR 是否合并或是否公开发布 |
+| compare 脚本 | 应用阈值策略、输出 PASS/FAIL summary | 隐藏失败指标或静默忽略缺失字段 |
+| main 发布 workflow | `main` push 后发布 merged PASS result | 重新执行不可信 PR 代码，或读取失败 PR artifacts 当正式结果 |
+| 前端/leaderboard | 渲染 accepted records 和 rejected examples 说明 | 把 PR preview artifacts 当成官方 accepted records |
 
-## Production Metric Schema
+## 生产指标 Schema
 
-Normalize raw vLLM output into this stable gate JSON:
+将原始 vLLM 输出归一化为稳定的 gate JSON：
 
 ```json
 {
@@ -52,38 +52,38 @@ Normalize raw vLLM output into this stable gate JSON:
 }
 ```
 
-Required fields for the existing comparison script are:
+现有 compare 脚本必须读取这些字段：
 
 - `request_throughput`
 - `output_throughput`
 - `mean_ttft_ms`
 - `failed`
 
-Optional fields (`completed`, p50/p95 latency, tokens/sec variants) can be kept in raw artifacts and added to the frontend later.
+可选字段（`completed`、p50/p95 latency、tokens/sec 变体等）先保留在 raw artifacts 中，后续需要时再加到前端。
 
-## Recommended Default Gate Policy
+## 推荐默认门禁策略
 
-Start conservative because self-hosted Ascend runners can be noisy:
+Ascend 自托管 runner 可能存在性能抖动，初始阈值建议保守：
 
-| Metric | Initial rule | Reason |
+| 指标 | 初始规则 | 原因 |
 |---|---|---|
-| `output_throughput` | candidate >= baseline * `0.97` | Allows small jitter but blocks meaningful throughput loss. |
-| `request_throughput` | candidate >= baseline * `0.97` | Catches serving-level throughput regressions. |
-| `mean_ttft_ms` | candidate <= baseline * `1.05` | Allows minor latency jitter. |
-| `failed` | candidate <= `0` | Any failed request makes the smoke result untrustworthy. |
+| `output_throughput` | candidate >= baseline * `0.97` | 允许小幅抖动，但阻止明显吞吐下降。 |
+| `request_throughput` | candidate >= baseline * `0.97` | 捕获 serving 层吞吐退化。 |
+| `mean_ttft_ms` | candidate <= baseline * `1.05` | 允许小幅延迟抖动。 |
+| `failed` | candidate <= `0` | 任意失败请求都会让 smoke 结果不可信。 |
 
-Make these values configurable by repository variables or workflow env:
+这些值应该支持通过 repo variables 或 workflow env 配置：
 
 - `ASCEND_GATE_OUTPUT_TPS_MIN_RATIO`
 - `ASCEND_GATE_REQUEST_TPS_MIN_RATIO`
 - `ASCEND_GATE_MEAN_TTFT_MAX_RATIO`
 - `ASCEND_GATE_FAILED_MAX`
 
-## Runner and Safety Requirements
+## Runner 与安全要求
 
-- Use a trusted self-hosted runner label such as `[self-hosted, linux, ascend]`.
-- Do not run untrusted fork PR code on the Ascend hardware with secrets.
-- For public repos, add a fork guard:
+- 使用可信自托管 runner label，例如 `[self-hosted, linux, ascend]`。
+- 不要在带 secrets/硬件权限的 Ascend runner 上执行不可信 fork PR 代码。
+- 如果仓库是 public，需要加 fork guard：
 
 ```yaml
 if: >-
@@ -91,25 +91,25 @@ if: >-
   github.event.pull_request.head.repo.full_name == github.repository
 ```
 
-- Avoid `pull_request_target` for executing benchmark code.
-- Use `concurrency` to avoid multiple PRs fighting over one Ascend machine.
-- Clean up vLLM server processes after each benchmark.
-- Upload raw logs and metrics even on failure.
+- 避免用 `pull_request_target` 执行 benchmark 代码。
+- 使用 `concurrency`，避免多个 PR 同时抢一台 Ascend 机器。
+- 每次 benchmark 后清理 vLLM server 进程。
+- 即使失败，也要上传 raw logs 和 metrics artifacts。
 
 ---
 
-## Task 1: Add Production Benchmark Runner Script
+## 任务 1：新增生产 benchmark runner 脚本
 
-**Objective:** Replace the demo's mock metric reader with a production runner that can execute `vllm bench serve` and write normalized gate JSON.
+**目标：** 用生产 runner 替换 demo 的 mock metric reader，能够执行 `vllm bench serve` 并写出归一化 gate JSON。
 
-**Files:**
+**文件：**
 
-- Create: `scripts/run_vllm_ascend_benchmark.py`
-- Keep: `scripts/read_mock_benchmark.py` for demo/local fallback only
+- 新增：`scripts/run_vllm_ascend_benchmark.py`
+- 保留：`scripts/read_mock_benchmark.py`，仅作为 demo/本地 fallback
 
-**Step 1: Create CLI skeleton**
+**步骤 1：创建 CLI 骨架**
 
-The script should accept:
+脚本应支持：
 
 ```bash
 python3 scripts/run_vllm_ascend_benchmark.py \
@@ -122,9 +122,9 @@ python3 scripts/run_vllm_ascend_benchmark.py \
   --port 8000
 ```
 
-**Step 2: Add environment-driven benchmark defaults**
+**步骤 2：增加环境变量默认值**
 
-Use conservative smoke defaults first:
+先用保守 smoke 配置：
 
 ```text
 ASCEND_GATE_MODEL=Qwen/Qwen2.5-7B-Instruct
@@ -137,9 +137,9 @@ ASCEND_GATE_REQUEST_RATE=inf
 ASCEND_GATE_TIMEOUT_SECONDS=900
 ```
 
-**Step 3: Run benchmark command**
+**步骤 3：运行 benchmark 命令**
 
-Use the project's real serving command if already standardized. Otherwise use this shape:
+如果真实项目已有标准 serving/benchmark 命令，优先复用。否则使用这个形态：
 
 ```bash
 vllm bench serve \
@@ -155,20 +155,20 @@ vllm bench serve \
   --result-filename "$RAW_OUTPUT"
 ```
 
-**Step 4: Normalize raw JSON**
+**步骤 4：归一化 raw JSON**
 
-Map vLLM fields into the production metric schema. If vLLM emits different names on the target version, adapt only here, not in `compare_gate.py`.
+把 vLLM 输出字段映射到生产 metric schema。如果目标 vLLM 版本字段名不同，只在这里适配，不要污染 `compare_gate.py`。
 
-Common mappings:
+常见映射：
 
 - `request_throughput` -> `request_throughput`
 - `output_throughput` -> `output_throughput`
-- `mean_ttft_ms` or `mean_ttft` -> `mean_ttft_ms`
+- `mean_ttft_ms` 或 `mean_ttft` -> `mean_ttft_ms`
 - failures/errors -> `failed`
 
-**Step 5: Verify locally with a fixture**
+**步骤 5：用 fixture 本地验证**
 
-Run with a saved raw JSON fixture before using hardware:
+上硬件前先用保存的 raw JSON fixture 验证：
 
 ```bash
 python3 scripts/run_vllm_ascend_benchmark.py \
@@ -180,9 +180,9 @@ python3 scripts/run_vllm_ascend_benchmark.py \
 python3 -m json.tool /tmp/gate-fixture.json
 ```
 
-Expected: normalized JSON includes all required fields.
+预期：归一化 JSON 包含所有必需字段。
 
-**Step 6: Commit**
+**步骤 6：提交**
 
 ```bash
 git add scripts/run_vllm_ascend_benchmark.py tests/fixtures/vllm-bench-serve.json
@@ -191,17 +191,15 @@ git commit -m "feat: add vllm ascend benchmark normalizer"
 
 ---
 
-## Task 2: Parameterize Gate Policy
+## 任务 2：参数化门禁阈值
 
-**Objective:** Make `scripts/compare_gate.py` read thresholds from environment variables while preserving current defaults.
+**目标：** 让 `scripts/compare_gate.py` 从环境变量读取阈值，同时保留当前默认值。
 
-**Files:**
+**文件：**
 
-- Modify: `scripts/compare_gate.py`
+- 修改：`scripts/compare_gate.py`
 
-**Step 1: Add env parsing**
-
-Introduce a helper:
+**步骤 1：增加 env 解析函数**
 
 ```python
 import os
@@ -215,7 +213,7 @@ def env_int(name: str, default: int) -> int:
     return default if value in (None, "") else int(value)
 ```
 
-**Step 2: Build policy from env**
+**步骤 2：从 env 构造 policy**
 
 ```python
 DEFAULT_POLICY = {
@@ -226,18 +224,16 @@ DEFAULT_POLICY = {
 }
 ```
 
-**Step 3: Test defaults and overrides**
-
-Run:
+**步骤 3：测试默认值与覆盖值**
 
 ```bash
 python3 scripts/compare_gate.py --help
 ASCEND_GATE_OUTPUT_TPS_MIN_RATIO=0.99 python3 scripts/compare_gate.py ...
 ```
 
-Expected: output JSON `policy.output_throughput_min_ratio` reflects the override.
+预期：输出 JSON 中 `policy.output_throughput_min_ratio` 反映 override 值。
 
-**Step 4: Commit**
+**步骤 4：提交**
 
 ```bash
 git add scripts/compare_gate.py
@@ -246,16 +242,16 @@ git commit -m "feat: parameterize benchmark gate thresholds"
 
 ---
 
-## Task 3: Add Real Ascend PR Workflow
+## 任务 3：新增真实 Ascend PR Workflow
 
-**Objective:** Add a production workflow that runs on Ascend self-hosted runners and preserves the demo's two-stage gate behavior.
+**目标：** 新增生产 workflow，在 Ascend self-hosted runner 上运行，并保留 demo 的两阶段门禁行为。
 
-**Files:**
+**文件：**
 
-- Create: `.github/workflows/ascend-two-stage-gate.yml`
-- Modify or copy from: `.github/workflows/two-stage-gate.yml`
+- 新增：`.github/workflows/ascend-two-stage-gate.yml`
+- 参考或复制：`.github/workflows/two-stage-gate.yml`
 
-**Step 1: Create workflow trigger and permissions**
+**步骤 1：创建 workflow 触发与权限**
 
 ```yaml
 name: Ascend two-stage benchmark gate
@@ -274,7 +270,7 @@ concurrency:
   cancel-in-progress: true
 ```
 
-**Step 2: Use self-hosted runner and fork guard**
+**步骤 2：使用自托管 runner 与 fork guard**
 
 ```yaml
 jobs:
@@ -285,9 +281,9 @@ jobs:
     runs-on: [self-hosted, linux, ascend]
 ```
 
-**Step 3: Checkout full history**
+**步骤 3：checkout 完整历史**
 
-Same as demo:
+与 demo 保持一致：
 
 ```yaml
 - uses: actions/checkout@v4
@@ -296,11 +292,11 @@ Same as demo:
     ref: ${{ github.event.pull_request.head.sha || github.sha }}
 ```
 
-**Step 4: Run production gate script**
+**步骤 4：运行生产 gate 脚本**
 
-Either update `scripts/run_two_stage_gate.sh` to choose production runner when `ASCEND_GATE_MODE=real`, or create `scripts/run_two_stage_gate_real.sh`.
+可以改造 `scripts/run_two_stage_gate.sh`，当 `ASCEND_GATE_MODE=real` 时选择生产 runner；也可以新增 `scripts/run_two_stage_gate_real.sh`。
 
-Recommended env:
+推荐 env：
 
 ```yaml
 - name: Run Ascend two-stage gate
@@ -316,9 +312,9 @@ Recommended env:
   run: bash scripts/run_two_stage_gate_real.sh
 ```
 
-**Step 5: Upload artifacts and summary**
+**步骤 5：上传 summary 与 artifacts**
 
-Keep the existing artifact pattern:
+保留现有 artifact 模式：
 
 ```yaml
 - name: Publish gate summary
@@ -338,7 +334,7 @@ Keep the existing artifact pattern:
     if-no-files-found: warn
 ```
 
-**Step 6: Commit**
+**步骤 6：提交**
 
 ```bash
 git add .github/workflows/ascend-two-stage-gate.yml scripts/run_two_stage_gate_real.sh
@@ -347,18 +343,18 @@ git commit -m "ci: add ascend two-stage benchmark gate workflow"
 
 ---
 
-## Task 4: Add Server Lifecycle Handling
+## 任务 4：增加 vLLM Server 生命周期管理
 
-**Objective:** Ensure every benchmarked commit starts a usable vLLM server and cleans it up.
+**目标：** 确保每个被 benchmark 的 commit 都能启动可用 vLLM server，并在结束后清理。
 
-**Files:**
+**文件：**
 
-- Create: `scripts/start_vllm_ascend_server.sh`
-- Modify: `scripts/run_two_stage_gate_real.sh`
+- 新增：`scripts/start_vllm_ascend_server.sh`
+- 修改：`scripts/run_two_stage_gate_real.sh`
 
-**Step 1: Start server per checked-out commit**
+**步骤 1：每个 checked-out commit 启动 server**
 
-Use a project-specific command if vLLM Ascend requires extra env. Example shape:
+如果 vLLM Ascend 需要额外 env，使用项目真实命令。示例形态：
 
 ```bash
 VLLM_USE_MODELSCOPE=${VLLM_USE_MODELSCOPE:-False}
@@ -369,9 +365,9 @@ python3 -m vllm.entrypoints.openai.api_server \
   --trust-remote-code
 ```
 
-**Step 2: Readiness check**
+**步骤 2：ready check**
 
-Poll `/v1/models`:
+轮询 `/v1/models`：
 
 ```bash
 for i in $(seq 1 120); do
@@ -380,9 +376,9 @@ for i in $(seq 1 120); do
 done
 ```
 
-Fail if not ready before timeout.
+超过 timeout 仍未 ready，则失败退出。
 
-**Step 3: Cleanup trap**
+**步骤 3：cleanup trap**
 
 ```bash
 cleanup() {
@@ -394,18 +390,18 @@ cleanup() {
 trap cleanup EXIT
 ```
 
-**Step 4: Verify on runner**
+**步骤 4：在 runner 上验证**
 
-Manual workflow dispatch on one known commit. Expected artifacts:
+对一个已知 commit 手动触发 workflow。预期 artifacts：
 
 - `.gate-results/m1.json`
 - `.gate-results/b1.json`
 - `.gate-results/m2.json`
 - `.gate-results/b1-prime.json`
-- raw vLLM logs under `.gate-results/raw/`
+- `.gate-results/raw/` 下的原始 vLLM logs
 - `summary.md`
 
-**Step 5: Commit**
+**步骤 5：提交**
 
 ```bash
 git add scripts/start_vllm_ascend_server.sh scripts/run_two_stage_gate_real.sh
@@ -414,16 +410,16 @@ git commit -m "ci: manage vllm server lifecycle for ascend gate"
 
 ---
 
-## Task 5: Publish Only Merged Accepted Results
+## 任务 5：只发布已合并 Accepted Results
 
-**Objective:** Keep official leaderboard/Page data limited to merged PASS results.
+**目标：** 保证官方 leaderboard/Page 数据只包含 merged PASS results。
 
-**Files:**
+**文件：**
 
-- Modify or create: `.github/workflows/ascend-pages-publish.yml`
-- Modify: `scripts/export_accepted_frontend.py` or production equivalent
+- 修改或新增：`.github/workflows/ascend-pages-publish.yml`
+- 修改：`scripts/export_accepted_frontend.py` 或生产等价脚本
 
-**Step 1: Trigger only on main**
+**步骤 1：只在 main 触发**
 
 ```yaml
 on:
@@ -432,17 +428,17 @@ on:
   workflow_dispatch:
 ```
 
-**Step 2: Reuse merged commit metrics**
+**步骤 2：复用或重跑合并提交 metrics**
 
-Option A: run a short accepted benchmark again on main.
+方案 A：main 上再跑一次短 benchmark 作为 accepted benchmark。
 
-Option B: export the merged commit's stored benchmark result if the production repository persists it.
+方案 B：如果生产仓库持久化了合并结果，则导出 merged commit 对应的已保存结果。
 
-Prefer Option A first unless benchmark cost is too high; it is simpler and avoids trusting stale PR artifacts.
+除非 benchmark 成本太高，建议先用方案 A：更简单，也避免信任过期 PR artifact。
 
-**Step 3: Write accepted record**
+**步骤 3：写 accepted record**
 
-Output schema should remain compatible with the demo frontend:
+输出 schema 与 demo 前端保持兼容：
 
 ```json
 {
@@ -459,7 +455,7 @@ Output schema should remain compatible with the demo frontend:
 }
 ```
 
-**Step 4: Commit**
+**步骤 4：提交**
 
 ```bash
 git add .github/workflows/ascend-pages-publish.yml scripts/export_accepted_frontend.py
@@ -468,28 +464,28 @@ git commit -m "ci: publish only merged ascend benchmark results"
 
 ---
 
-## Task 6: Add Branch Protection / Required Checks
+## 任务 6：配置 Branch Protection / Required Checks
 
-**Objective:** Make the Ascend gate enforceable instead of informational.
+**目标：** 让 Ascend gate 成为强制门禁，而不只是信息提示。
 
-**Files:**
+**文件：**
 
-- GitHub repository settings, not code.
-- Optional docs: `docs/branch-protection.md`
+- GitHub 仓库设置，不是代码文件。
+- 可选文档：`docs/branch-protection.md`
 
-**Step 1: Add required status check**
+**步骤 1：添加 required status check**
 
-In GitHub Settings -> Branches -> main protection:
+在 GitHub Settings -> Branches -> main protection 中：
 
-- Require status checks to pass before merging.
-- Add `Ascend two-stage benchmark gate / two-stage-gate`.
-- Require branches to be up to date if desired.
+- 开启 Require status checks to pass before merging。
+- 添加 `Ascend two-stage benchmark gate / two-stage-gate`。
+- 视情况开启 Require branches to be up to date。
 
-**Step 2: Keep admin bypass policy explicit**
+**步骤 2：明确 admin bypass 策略**
 
-Document whether maintainers may bypass the benchmark during runner outage.
+文档中说明 runner 故障时维护者是否可以绕过 benchmark。
 
-**Step 3: Commit docs**
+**步骤 3：提交文档**
 
 ```bash
 git add docs/branch-protection.md
@@ -498,25 +494,25 @@ git commit -m "docs: document ascend gate branch protection"
 
 ---
 
-## Task 7: Production Verification Matrix
+## 任务 7：生产验证矩阵
 
-**Objective:** Reproduce the demo proof in the real repository with real benchmarks.
+**目标：** 在真实仓库里用真实 benchmark 复现 demo 证明链路。
 
-**Files:**
+**文件：**
 
-- Create: `docs/ascend-gate-verification.md`
+- 新增：`docs/ascend-gate-verification.md`
 
-**Verification PRs:**
+**验证 PR：**
 
-| Scenario | Expected | Notes |
+| 场景 | 预期 | 说明 |
 |---|---|---|
-| PASS smoke PR | Green | Small non-regressing change or threshold-safe fixture. |
-| Stage 1 regression | Red | Artificially lower throughput or add a known slow path. |
-| Stage 2 regression | Red | PR passes old baseline but fails after latest main improves. |
-| Request failure | Red | Force benchmark request failure or invalid serving config. |
-| Rebase conflict | Red | Conflicting change confirms manual rebase message. |
+| PASS smoke PR | 绿色 | 小的不退化改动，或阈值安全 fixture。 |
+| Stage 1 regression | 红色 | 人为降低吞吐，或增加已知慢路径。 |
+| Stage 2 regression | 红色 | PR 相对旧基线通过，但 latest main 提升后失败。 |
+| Request failure | 红色 | 强制 benchmark 请求失败或错误 serving 配置。 |
+| Rebase conflict | 红色 | 冲突改动确认 manual rebase 提示。 |
 
-**Commands/checks:**
+**命令/检查：**
 
 ```bash
 bash -n scripts/*.sh
@@ -524,67 +520,67 @@ python3 -m py_compile scripts/*.py
 python3 -m json.tool .gate-results/*.json
 ```
 
-**Expected proof:**
+**预期证明：**
 
-- Failed PRs visible in Pull requests and Actions.
-- PASS PR can merge.
-- Main publish workflow runs after merge.
-- Public leaderboard/Page contains only merged PASS records.
-
----
-
-## Task 8: Operational Runbook
-
-**Objective:** Give maintainers a short troubleshooting guide.
-
-**Files:**
-
-- Create: `docs/ascend-gate-runbook.md`
-
-**Include:**
-
-- Runner offline / busy.
-- vLLM server fails to start.
-- Model download/cache miss.
-- Hugging Face or ModelScope network issue.
-- Benchmark JSON missing fields.
-- Rebase conflict.
-- Stage 1 fail vs Stage 2 fail interpretation.
-- How to rerun failed jobs.
-- How to temporarily relax thresholds with repo variables.
-- How to inspect `.gate-results` artifacts.
+- 失败 PR 在 Pull requests 和 Actions 中可见。
+- PASS PR 可以 merge。
+- merge 后 main publish workflow 运行。
+- 公开 leaderboard/Page 只包含 merged PASS records。
 
 ---
 
-## Implementation Order
+## 任务 8：运维 Runbook
 
-1. Add production benchmark normalizer with fixture tests.
-2. Parameterize threshold policy.
-3. Add real self-hosted Ascend workflow.
-4. Add server lifecycle and cleanup.
-5. Add merged-only publish workflow.
-6. Configure required checks.
-7. Run verification matrix.
-8. Publish runbook.
+**目标：** 给维护者一份简短排障指南。
 
-## Acceptance Criteria
+**文件：**
 
-- A real PR produces `.gate-results/summary.md` with M1/B1/M2/B1' commits and metric tables.
-- Stage 1 failures fail before rebase.
-- Stage 2 failures show Stage 1 PASS and Stage 2 FAIL.
-- Request failures fail even when throughput metrics look acceptable.
-- The workflow uses trusted self-hosted Ascend runners and does not run untrusted fork code with secrets/hardware.
-- Main branch publication contains only merged PASS records.
-- Branch protection requires the real gate check before merging.
+- 新增：`docs/ascend-gate-runbook.md`
 
-## Open Inputs Before Coding
+**包含：**
 
-Confirm these before implementing in the real repository:
+- Runner offline / busy。
+- vLLM server 启动失败。
+- 模型下载/cache miss。
+- Hugging Face 或 ModelScope 网络问题。
+- benchmark JSON 缺字段。
+- rebase 冲突。
+- Stage 1 fail 和 Stage 2 fail 如何解读。
+- 如何 rerun failed jobs。
+- 如何临时用 repo variables 放宽阈值。
+- 如何查看 `.gate-results` artifacts。
 
-1. Exact repository path and default branch.
-2. Self-hosted runner labels.
-3. vLLM Ascend startup command and required environment variables.
-4. Model cache location and model download policy.
-5. Preferred smoke model and prompt sizes.
-6. Whether main publish should re-run benchmark or reuse persisted merged result.
-7. Branch protection/bypass policy during runner outages.
+---
+
+## 实施顺序
+
+1. 新增生产 benchmark normalizer，并用 fixture 测试。
+2. 参数化门禁阈值。
+3. 新增真实 self-hosted Ascend workflow。
+4. 增加 server 生命周期管理与清理。
+5. 新增 merged-only 发布 workflow。
+6. 配置 required checks。
+7. 跑生产验证矩阵。
+8. 发布 runbook。
+
+## 验收标准
+
+- 真实 PR 能生成 `.gate-results/summary.md`，包含 M1/B1/M2/B1' commits 和指标表。
+- Stage 1 失败会在 rebase 前失败。
+- Stage 2 失败会显示 Stage 1 PASS、Stage 2 FAIL。
+- 请求失败时，即使吞吐指标看起来正常，也会 FAIL。
+- workflow 使用可信 self-hosted Ascend runner，不在带 secrets/硬件权限的 runner 上执行不可信 fork PR 代码。
+- main 分支发布内容只包含 merged PASS records。
+- branch protection 要求真实 gate check 通过后才能合并。
+
+## 编码前需要确认的输入
+
+正式实现前需要确认：
+
+1. 真实仓库路径和默认分支。
+2. self-hosted runner labels。
+3. vLLM Ascend 启动命令和必需环境变量。
+4. 模型 cache 位置和模型下载策略。
+5. 首选 smoke model 和 prompt size。
+6. main publish 是重跑 benchmark，还是复用已持久化 merged result。
+7. runner 故障时的 branch protection/bypass 策略。
