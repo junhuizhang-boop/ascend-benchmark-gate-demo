@@ -4,7 +4,7 @@
 
 **目标：** 将当前已经跑通的 mock demo 迁移为真实 vLLM Ascend PR 性能门禁：阻止性能退化 PR 合并，并且只发布已合并 PASS 结果。
 
-**架构：** 保留 demo 已验证的两阶段拓扑：先 benchmark `M1` 与 `B1`，再把 `B1` 本地 rebase 到最新 `main` 的 `M2` 上生成 `B1'`，然后 benchmark `M2` 与 `B1'`。PR workflow 只负责门禁与 artifact 上传；main workflow 只负责发布已合并 accepted results。需要替换的 demo 组件只有 mock benchmark reader。
+**架构：** 保留 demo 已验证的两阶段拓扑：先 benchmark `M1` 与 `B1`，再把 `B1` 本地 rebase 到最新 `main` 的 `M2` 上生成 `B1'`，然后 benchmark `M2` 与 `B1'`。PR workflow 只负责门禁与 artifact 上传；main workflow 只负责发布已合并 accepted results。当前优先路线不再要求新建一套独立 gate workflow，而是复用 `vllm-hust` 已有 `ascend-benchmark-leaderboard.yml`、`run_ascend_benchmark_ci.sh` 和 `vllm-hust-benchmark` 的 same-spec / `run_leaderboard.json` 体系，在现有 leaderboard CI 内补齐两阶段门控。
 
 **技术栈：** GitHub Actions、自托管 Ascend runner、Bash、Python、vLLM `vllm bench serve`、JSON artifacts、GitHub Pages 或现有 leaderboard 发布链路。
 
@@ -22,6 +22,16 @@
 
 真实实现应该保持这个契约，只把指标来源从 `benchmark-metrics.json` 换成真实 vLLM benchmark 输出。
 
+## 与当前 perfgate 实施文档的对齐
+
+根据 `perfgate-changes.md`，当前实现已经选择 **集成现有 leaderboard workflow**，而不是按本文早期草案新建 `ascend-two-stage-gate.yml`。因此后续计划以这些约束为准：
+
+- `vllm-hust` 负责 workflow、rebase、baseline 分支读写、PR comment 和调用 benchmark 脚本。
+- `vllm-hust-benchmark` 负责 perfgate spec、`perfgate.py compare/compare2`、指标解析和报告生成。
+- benchmark 输入/输出复用 existing same-spec 体系：主数据文件是 `run_leaderboard.json`，不是另起独立 `.gate-results/*.json` schema。
+- main push 生成并保存 baseline 到 `benchmark-baselines` 分支；PR 只读取 baseline、对比并评论，不应 push baseline。
+- 默认 smoke 模型调整为 `Qwen2.5-0.5B`、8 prompts，用于快速 CI 门控；更大模型 benchmark 保留给 leaderboard/nightly/手动验证。
+
 ## 责任边界
 
 | 层级 | 负责 | 禁止 |
@@ -32,9 +42,9 @@
 | main 发布 workflow | `main` push 后发布 merged PASS result | 重新执行不可信 PR 代码，或读取失败 PR artifacts 当正式结果 |
 | 前端/leaderboard | 渲染 accepted records 和 rejected examples 说明 | 把 PR preview artifacts 当成官方 accepted records |
 
-## 生产指标 Schema
+## 生产指标口径
 
-将原始 vLLM 输出归一化为稳定的 gate JSON：
+早期独立 gate 草案要求把原始 vLLM 输出归一化为稳定的 gate JSON：
 
 ```json
 {
@@ -61,15 +71,24 @@
 
 可选字段（`completed`、p50/p95 latency、tokens/sec 变体等）先保留在 raw artifacts 中，后续需要时再加到前端。
 
+当前 perfgate 集成路线则优先复用 `run_leaderboard.json` 中的 same-spec / `goal_progress` 指标，不新增独立 normalizer schema。`perfgate.py` 应明确读取并报告这些门控指标：
+
+- `throughput_tps`：越高越好。
+- `ttft_ms`：越低越好。
+- `tbt_ms`：越低越好。
+
+如果后续仍需要独立 `.gate-results` schema，只作为 raw/辅助 artifact，不应替代当前 `run_leaderboard.json` 主接口，避免 workflow、leaderboard、PR comment 三套指标口径漂移。
+
 ## 推荐默认门禁策略
 
 Ascend 自托管 runner 可能存在性能抖动，初始阈值建议保守：
 
 | 指标 | 初始规则 | 原因 |
 |---|---|---|
-| `output_throughput` | candidate >= baseline * `0.97` | 允许小幅抖动，但阻止明显吞吐下降。 |
-| `request_throughput` | candidate >= baseline * `0.97` | 捕获 serving 层吞吐退化。 |
-| `mean_ttft_ms` | candidate <= baseline * `1.05` | 允许小幅延迟抖动。 |
+| `throughput_tps` / `output_throughput` | candidate >= baseline * `0.97` | 允许小幅抖动，但阻止明显吞吐下降。 |
+| `request_throughput` | candidate >= baseline * `0.97` | 捕获 serving 层吞吐退化；如果 `run_leaderboard.json` 没有该字段，可暂不作为 perfgate 主指标。 |
+| `ttft_ms` / `mean_ttft_ms` | candidate <= baseline * `1.05` | 允许小幅延迟抖动。 |
+| `tbt_ms` | candidate <= baseline * `1.05` | 捕获 token 间延迟退化。 |
 | `failed` | candidate <= `0` | 任意失败请求都会让 smoke 结果不可信。 |
 
 这些值应该支持通过 repo variables 或 workflow env 配置：
@@ -78,6 +97,8 @@ Ascend 自托管 runner 可能存在性能抖动，初始阈值建议保守：
 - `ASCEND_GATE_REQUEST_TPS_MIN_RATIO`
 - `ASCEND_GATE_MEAN_TTFT_MAX_RATIO`
 - `ASCEND_GATE_FAILED_MAX`
+
+如果短期实现继续采用 `current >= baseline` / `current <= baseline` 的严格比较，应先把 `PERFGATE_MODE` 保持为 `report`，收集多轮 main baseline 后再切到 `enforce`；切换前建议将吞吐/延迟阈值改成可配置 ratio，避免 Ascend 自托管 runner 抖动误杀。
 
 ## Runner 与安全要求
 
@@ -94,7 +115,8 @@ if: >-
 - 避免用 `pull_request_target` 执行 benchmark 代码。
 - 使用 `concurrency`，避免多个 PR 同时抢一台 Ascend 机器。
 - 每次 benchmark 后清理 vLLM server 进程。
-- 即使失败，也要上传 raw logs 和 metrics artifacts。
+- 即使失败，也要上传 raw logs、Stage 1/2 `run_leaderboard.json`、`perfgate` markdown report、rebase conflict details 等 artifacts。
+- `contents: write` 仅应服务于 `push: main` 的 baseline store 路径；PR 路径只需要 `contents: read` 和 `pull-requests: write`，不得在 PR 事件里 push `benchmark-baselines`。
 
 ---
 
