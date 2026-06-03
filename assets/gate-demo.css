@@ -55,3 +55,13 @@
 .gate-note-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
 .gate-note-grid article { border: 1px solid #dbe7f3; border-radius: 18px; background: #fff; padding: 18px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05); }
 @media (max-width: 900px) { .gate-overview, .gate-stage-grid, .gate-note-grid { grid-template-columns: 1fr; } .gate-toolbar { align-items: flex-start; flex-direction: column; } .gate-toolbar select { width: 100%; min-width: 0; } .gate-sha-row { grid-template-columns: 1fr; } }
+
+.demo-playbook { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin: 18px 0 20px; }
+.demo-playbook-card { border: 1px solid #dbe7f3; background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%); border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05); }
+.demo-playbook-card strong { display: block; color: #0f172a; margin-bottom: 8px; font-size: 0.98rem; }
+.demo-playbook-card p { margin: 0; color: #475569; line-height: 1.65; font-size: 0.9rem; }
+.demo-playbook-card.pass { border-color: #86efac; background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%); }
+.demo-playbook-card.fail { border-color: #fecaca; background: linear-gradient(180deg, #fef2f2 0%, #ffffff 100%); }
+.demo-playbook-card.neutral { border-color: #bae6fd; background: linear-gradient(180deg, #f0f9ff 0%, #ffffff 100%); }
+.demo-playbook-card code { display: inline-block; margin-top: 6px; font-size: 0.8rem; }
+@media (max-width: 900px) { .demo-playbook { grid-template-columns: 1fr; } }
