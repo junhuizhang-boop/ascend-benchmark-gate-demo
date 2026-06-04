@@ -1,608 +1,257 @@
 # 真实 vLLM Ascend 两阶段性能门禁落地方案
 
-> **给 Hermes：** 如需按本文实施，使用 subagent-driven-development skill 按任务逐项执行。
+> 本文描述把已验证的 mock demo 落地到真实 `vllm-hust` / `vllm-hust-benchmark` 仓库的实施方案。当前生产路线是**集成现有 leaderboard workflow**，不是新建独立 gate workflow。
 
-**目标：** 将当前已经跑通的 mock demo 迁移为真实 vLLM Ascend PR 性能门禁：阻止性能退化 PR 合并，并且只发布已合并 PASS 结果。
+**目标：** 在真实 Ascend self-hosted runner 上为 PR 提供两阶段性能门禁，阻止性能退化 PR 合并；`main` 只发布或存储已合并提交的 PASS baseline / accepted result。
 
-**架构：** 保留 demo 已验证的两阶段拓扑：先 benchmark `M1` 与 `B1`，再把 `B1` 本地 rebase 到最新 `main` 的 `M2` 上生成 `B1'`，然后 benchmark `M2` 与 `B1'`。PR workflow 只负责门禁与 artifact 上传；main workflow 只负责发布已合并 accepted results。当前优先路线不再要求新建一套独立 gate workflow，而是复用 `vllm-hust` 已有 `ascend-benchmark-leaderboard.yml`、`run_ascend_benchmark_ci.sh` 和 `vllm-hust-benchmark` 的 same-spec / `run_leaderboard.json` 体系，在现有 leaderboard CI 内补齐两阶段门控。
+**当前主线：**
 
-**技术栈：** GitHub Actions、自托管 Ascend runner、Bash、Python、vLLM `vllm bench serve`、JSON artifacts、GitHub Pages 或现有 leaderboard 发布链路。
+- `vllm-hust` 负责 GitHub Actions workflow、目标仓 checkout、Stage 1/2 拓扑、baseline fetch/store、PR comment、artifact 上传。
+- `vllm-hust-benchmark` 负责 same-spec、`run_leaderboard.json`、`perfgate compare/compare2`、指标解析和 markdown report。
+- 主数据接口是 `run_leaderboard.json`，不是独立 `.gate-results/*.json` schema。
+- 主门禁指标是 `metrics.throughput_tps`、`metrics.ttft_ms`、`metrics.tbt_ms`，并要求 `same_spec.spec_id` / `same_spec.resolved_spec_hash` 与 gate spec 匹配。
 
 ---
 
 ## 当前 Demo 已验证的契约
 
-当前 demo 已经证明这些产品行为：
+真实实现必须保持 demo 已证明的产品行为：
 
 - PASS PR 显示绿色 checks，可以合并。
 - Stage 1 FAIL PR 在 rebase 前失败：`B1` 相对 `M1` 已经退化。
 - Stage 2 FAIL PR 可以相对 `M1` 通过，但 rebase 到 `M2` 后失败。
-- 请求失败数不为 0（`failed > 0`）会阻止 PR。
-- GitHub Pages 只读取已合并 accepted records；失败 PR 的 artifacts 只在 Actions/Checks 里可见。
+- 请求失败或非可比 artifact 会阻止 PR。
+- 失败 PR 的 artifacts 只在 Actions/Checks 里可见，不会成为官方 accepted result。
+- `main` push 才能写入 baseline 或发布合并结果。
 
-真实实现应该保持这个契约，只把指标来源从 `benchmark-metrics.json` 换成真实 vLLM benchmark 输出。
+## 生产拓扑
 
-## 与当前 perfgate 实施文档的对齐
+两阶段门禁仍沿用 demo 拓扑：
 
-根据 `perfgate-changes.md`，当前实现已经选择 **集成现有 leaderboard workflow**，而不是按本文早期草案新建 `ascend-two-stage-gate.yml`。因此后续计划以这些约束为准：
+1. `M1`：PR fork point / branch divergence baseline。
+2. `B1`：PR head。
+3. Stage 1：比较 `B1` vs `M1`，证明 PR 自身没有引入退化。
+4. 如果 Stage 1 在 `enforce` 模式下 FAIL，则跳过 Stage 2 benchmark，但 final compare/report 仍必须运行并输出 `Stage 2: NOT RUN`。
+5. `M2`：当前最新 `main`。
+6. `B1'`：把 `B1` 在 CI 本地 rebase 到 `M2` 后得到的临时提交，不 force-push 用户分支。
+7. Stage 2：比较 `B1'` vs `M2`，证明 PR 在最新 main 上仍不退化。
+8. Final compare：统一生成 markdown report、PR comment、job exit code。
 
-- `vllm-hust` 负责 workflow、rebase、baseline 分支读写、PR comment 和调用 benchmark 脚本。
-- `vllm-hust-benchmark` 负责 perfgate spec、`perfgate.py compare/compare2`、指标解析和报告生成。
-- benchmark 输入/输出复用 existing same-spec 体系：主数据文件是 `run_leaderboard.json`，不是另起独立 `.gate-results/*.json` schema。
-- main push 生成并保存 baseline 到 `benchmark-baselines` 分支；PR 只读取 baseline、对比并评论，不应 push baseline。
-- 默认 smoke 模型调整为 `Qwen2.5-0.5B`、8 prompts，用于快速 CI 门控；更大模型 benchmark 保留给 leaderboard/nightly/手动验证。
+Stage 2 只有在 `fork_point == M2` 时可以标记为 `SKIPPED`；Stage 1 FAIL、rebase conflict、安装失败、Ascend runtime 异常、artifact 缺失等都不能伪装成 skipped，应显示为 `FAIL` 或 `NOT RUN` 并 fail-closed。
 
-## 责任边界
+## 与现有 workflow 的集成方式
 
-| 层级 | 负责 | 禁止 |
-|---|---|---|
-| PR workflow | checkout、commit 拓扑、runner 选择、artifact 上传 | 把失败 PR 发布为 accepted result |
-| benchmark runner 脚本 | 启动/检查服务、运行 benchmark、归一化 metrics JSON | 决定 PR 是否合并或是否公开发布 |
-| compare 脚本 | 应用阈值策略、输出 PASS/FAIL summary | 隐藏失败指标或静默忽略缺失字段 |
-| main 发布 workflow | `main` push 后发布 merged PASS result | 重新执行不可信 PR 代码，或读取失败 PR artifacts 当正式结果 |
-| 前端/leaderboard | 渲染 accepted records 和 rejected examples 说明 | 把 PR preview artifacts 当成官方 accepted records |
+不要新建 `.github/workflows/ascend-two-stage-gate.yml`。应继续扩展现有：
 
-## 生产指标口径
+- `.github/workflows/ascend-benchmark-leaderboard.yml`
+- `.github/workflows/scripts/run_ascend_benchmark_ci.sh`
+- `.github/workflows/scripts/perfgate_fetch_baseline.sh`
+- `.github/workflows/scripts/perfgate_stage1_compare.sh`
+- `.github/workflows/scripts/perfgate_stage2_rebase_and_benchmark.sh`
+- `.github/workflows/scripts/perfgate_compare.sh`
+- `.github/workflows/scripts/perfgate_store_baseline.sh`
 
-早期独立 gate 草案要求把原始 vLLM 输出归一化为稳定的 gate JSON：
+PR workflow 只做 gate、artifact、comment。`push: main` 路径负责生成并写入 baseline。`workflow_dispatch` 可用于手动 benchmark / report，默认不写 baseline，除非后续明确新增受保护输入并限制权限。
 
-```json
-{
-  "label": "B1",
-  "sha": "<commit sha>",
-  "model": "Qwen/Qwen2.5-7B-Instruct",
-  "scenario": "random-online-smoke",
-  "hardware": "Ascend 910B3",
-  "request_throughput": 0.0,
-  "output_throughput": 0.0,
-  "mean_ttft_ms": 0.0,
-  "failed": 0,
-  "completed": 0,
-  "raw_result_path": ".gate-results/raw/B1.json"
-}
-```
+## 指标与 artifact 契约
 
-现有 compare 脚本必须读取这些字段：
-
-- `request_throughput`
-- `output_throughput`
-- `mean_ttft_ms`
-- `failed`
-
-可选字段（`completed`、p50/p95 latency、tokens/sec 变体等）先保留在 raw artifacts 中，后续需要时再加到前端。
-
-当前 perfgate 集成路线则优先复用 `run_leaderboard.json` 中的 same-spec / `goal_progress` 指标，不新增独立 normalizer schema。`perfgate.py` 应明确读取并报告这些门控指标：
-
-- `throughput_tps`：越高越好。
-- `ttft_ms`：越低越好。
-- `tbt_ms`：越低越好。
-
-如果后续仍需要独立 `.gate-results` schema，只作为 raw/辅助 artifact，不应替代当前 `run_leaderboard.json` 主接口，避免 workflow、leaderboard、PR comment 三套指标口径漂移。
-
-## 推荐默认门禁策略
-
-Ascend 自托管 runner 可能存在性能抖动，初始阈值建议保守：
-
-| 指标 | 初始规则 | 原因 |
-|---|---|---|
-| `throughput_tps` / `output_throughput` | candidate >= baseline * `0.97` | 允许小幅抖动，但阻止明显吞吐下降。 |
-| `request_throughput` | candidate >= baseline * `0.97` | 捕获 serving 层吞吐退化；如果 `run_leaderboard.json` 没有该字段，可暂不作为 perfgate 主指标。 |
-| `ttft_ms` / `mean_ttft_ms` | candidate <= baseline * `1.05` | 允许小幅延迟抖动。 |
-| `tbt_ms` | candidate <= baseline * `1.05` | 捕获 token 间延迟退化。 |
-| `failed` | candidate <= `0` | 任意失败请求都会让 smoke 结果不可信。 |
-
-这些值应该支持通过 repo variables 或 workflow env 配置：
-
-- `ASCEND_GATE_OUTPUT_TPS_MIN_RATIO`
-- `ASCEND_GATE_REQUEST_TPS_MIN_RATIO`
-- `ASCEND_GATE_MEAN_TTFT_MAX_RATIO`
-- `ASCEND_GATE_FAILED_MAX`
-
-如果短期实现继续采用 `current >= baseline` / `current <= baseline` 的严格比较，应先把 `PERFGATE_MODE` 保持为 `report`，收集多轮 main baseline 后再切到 `enforce`；切换前建议将吞吐/延迟阈值改成可配置 ratio，避免 Ascend 自托管 runner 抖动误杀。
-
-## Runner 与安全要求
-
-- 使用可信自托管 runner label，例如 `[self-hosted, linux, ascend]`。
-- 不要在带 secrets/硬件权限的 Ascend runner 上执行不可信 fork PR 代码。
-- 如果仓库是 public，需要加 fork guard：
-
-```yaml
-if: >-
-  github.event_name != 'pull_request' ||
-  github.event.pull_request.head.repo.full_name == github.repository
-```
-
-- 避免用 `pull_request_target` 执行 benchmark 代码。
-- 使用 `concurrency`，避免多个 PR 同时抢一台 Ascend 机器。
-- 每次 benchmark 后清理 vLLM server 进程。
-- 即使失败，也要上传 raw logs、Stage 1/2 `run_leaderboard.json`、`perfgate` markdown report、rebase conflict details 等 artifacts。
-- `contents: write` 仅应服务于 `push: main` 的 baseline store 路径；PR 路径只需要 `contents: read` 和 `pull-requests: write`，不得在 PR 事件里 push `benchmark-baselines`。
-
----
-
-## 任务 1：新增生产 benchmark runner 脚本
-
-**目标：** 用生产 runner 替换 demo 的 mock metric reader，能够执行 `vllm bench serve` 并写出归一化 gate JSON。
-
-**文件：**
-
-- 新增：`scripts/run_vllm_ascend_benchmark.py`
-- 保留：`scripts/read_mock_benchmark.py`，仅作为 demo/本地 fallback
-
-**步骤 1：创建 CLI 骨架**
-
-脚本应支持：
-
-```bash
-python3 scripts/run_vllm_ascend_benchmark.py \
-  --label B1 \
-  --sha "$B1_SHA" \
-  --output .gate-results/b1.json \
-  --raw-output .gate-results/raw/b1-vllm.json \
-  --model "$ASCEND_GATE_MODEL" \
-  --host 127.0.0.1 \
-  --port 8000
-```
-
-**步骤 2：增加环境变量默认值**
-
-先用保守 smoke 配置：
+主 artifact：
 
 ```text
-ASCEND_GATE_MODEL=Qwen/Qwen2.5-7B-Instruct
-ASCEND_GATE_SCENARIO=random-online-smoke
-ASCEND_GATE_NUM_PROMPTS=32
-ASCEND_GATE_RANDOM_INPUT_LEN=128
-ASCEND_GATE_RANDOM_OUTPUT_LEN=32
-ASCEND_GATE_MAX_CONCURRENCY=4
-ASCEND_GATE_REQUEST_RATE=inf
-ASCEND_GATE_TIMEOUT_SECONDS=900
+.benchmarks/ci/<run_id>/submissions/<run_id>/run_leaderboard.json
 ```
 
-**步骤 3：运行 benchmark 命令**
+`perfgate` 必须从 `run_leaderboard.json` 读取并验证：
 
-如果真实项目已有标准 serving/benchmark 命令，优先复用。否则使用这个形态：
+- `metrics.throughput_tps`：越高越好。
+- `metrics.ttft_ms`：越低越好。
+- `metrics.tbt_ms`：越低越好。
+- `same_spec.spec_id`：必须等于 gate spec，例如 `perfgate-ascend-qwen25-05b-910b3`。
+- `same_spec.resolved_spec_hash`：必须存在且 current/baseline 一致。
 
-```bash
-vllm bench serve \
-  --backend openai \
-  --base-url "http://127.0.0.1:8000" \
-  --model "$ASCEND_GATE_MODEL" \
-  --dataset-name random \
-  --num-prompts "$ASCEND_GATE_NUM_PROMPTS" \
-  --random-input-len "$ASCEND_GATE_RANDOM_INPUT_LEN" \
-  --random-output-len "$ASCEND_GATE_RANDOM_OUTPUT_LEN" \
-  --max-concurrency "$ASCEND_GATE_MAX_CONCURRENCY" \
-  --save-result \
-  --result-filename "$RAW_OUTPUT"
-```
+旧草案中的独立 schema，例如 `request_throughput`、`output_throughput`、`mean_ttft_ms`、`failed`，只能作为 raw summary 或兼容展示字段，不作为两阶段 perfgate 的主判定接口。
 
-**步骤 4：归一化 raw JSON**
+## 默认 smoke 配置
 
-把 vLLM 输出字段映射到生产 metric schema。如果目标 vLLM 版本字段名不同，只在这里适配，不要污染 `compare_gate.py`。
-
-常见映射：
-
-- `request_throughput` -> `request_throughput`
-- `output_throughput` -> `output_throughput`
-- `mean_ttft_ms` 或 `mean_ttft` -> `mean_ttft_ms`
-- failures/errors -> `failed`
-
-**步骤 5：用 fixture 本地验证**
-
-上硬件前先用保存的 raw JSON fixture 验证：
-
-```bash
-python3 scripts/run_vllm_ascend_benchmark.py \
-  --label fixture \
-  --sha test \
-  --output /tmp/gate-fixture.json \
-  --raw-output tests/fixtures/vllm-bench-serve.json \
-  --fixture-only
-python3 -m json.tool /tmp/gate-fixture.json
-```
-
-预期：归一化 JSON 包含所有必需字段。
-
-**步骤 6：提交**
-
-```bash
-git add scripts/run_vllm_ascend_benchmark.py tests/fixtures/vllm-bench-serve.json
-git commit -m "feat: add vllm ascend benchmark normalizer"
-```
-
----
-
-## 任务 2：参数化门禁阈值
-
-**目标：** 让 `scripts/compare_gate.py` 从环境变量读取阈值，同时保留当前默认值。
-
-**文件：**
-
-- 修改：`scripts/compare_gate.py`
-
-**步骤 1：增加 env 解析函数**
-
-```python
-import os
-
-def env_float(name: str, default: float) -> float:
-    value = os.getenv(name)
-    return default if value in (None, "") else float(value)
-
-def env_int(name: str, default: int) -> int:
-    value = os.getenv(name)
-    return default if value in (None, "") else int(value)
-```
-
-**步骤 2：从 env 构造 policy**
-
-```python
-DEFAULT_POLICY = {
-    "request_throughput_min_ratio": env_float("ASCEND_GATE_REQUEST_TPS_MIN_RATIO", 0.97),
-    "output_throughput_min_ratio": env_float("ASCEND_GATE_OUTPUT_TPS_MIN_RATIO", 0.97),
-    "mean_ttft_max_ratio": env_float("ASCEND_GATE_MEAN_TTFT_MAX_RATIO", 1.05),
-    "failed_max": env_int("ASCEND_GATE_FAILED_MAX", 0),
-}
-```
-
-**步骤 3：测试默认值与覆盖值**
-
-```bash
-python3 scripts/compare_gate.py --help
-ASCEND_GATE_OUTPUT_TPS_MIN_RATIO=0.99 python3 scripts/compare_gate.py ...
-```
-
-预期：输出 JSON 中 `policy.output_throughput_min_ratio` 反映 override 值。
-
-**步骤 4：提交**
-
-```bash
-git add scripts/compare_gate.py
-git commit -m "feat: parameterize benchmark gate thresholds"
-```
-
----
-
-## 任务 3：新增真实 Ascend PR Workflow
-
-**目标：** 新增生产 workflow，在 Ascend self-hosted runner 上运行，并保留 demo 的两阶段门禁行为。
-
-**文件：**
-
-- 新增：`.github/workflows/ascend-two-stage-gate.yml`
-- 参考或复制：`.github/workflows/two-stage-gate.yml`
-
-**步骤 1：创建 workflow 触发与权限**
+PR 门禁默认使用小模型和短 benchmark，避免占用 Ascend runner 太久：
 
 ```yaml
-name: Ascend two-stage benchmark gate
-
-on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pull-requests: write
-
-concurrency:
-  group: ascend-gate-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+MODEL_NAME: Qwen/Qwen2.5-0.5B-Instruct
+MODEL_PARAMETERS: 0.5B
+MODEL_PRECISION: BF16
+DTYPE: bfloat16
+MAX_MODEL_LEN: "256"
+MAX_NUM_SEQS: "1"
+BENCH_NUM_PROMPTS: "8"
+BENCH_RANDOM_INPUT_LEN: "64"
+BENCH_RANDOM_OUTPUT_LEN: "16"
+BENCH_MAX_CONCURRENCY: "4"
 ```
 
-**步骤 2：使用自托管 runner 与 fork guard**
+更大模型 benchmark 保留给 nightly、leaderboard、或手动 `workflow_dispatch`。
 
-```yaml
-jobs:
-  two-stage-gate:
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, ascend]
+## 门禁策略
+
+初期可以先用严格比较并保持 `PERFGATE_MODE=report` 收集 runner 抖动数据：
+
+- throughput：candidate >= baseline。
+- TTFT：candidate <= baseline。
+- TBT：candidate <= baseline。
+
+切换到 `enforce` 前，建议支持 ratio 阈值以降低 self-hosted runner 抖动误杀：
+
+- `PERFGATE_THROUGHPUT_TPS_MIN_RATIO`，例如 `0.97`。
+- `PERFGATE_TTFT_MS_MAX_RATIO`，例如 `1.05`。
+- `PERFGATE_TBT_MS_MAX_RATIO`，例如 `1.05`。
+
+如果短期仍坚持零容差，应在 PR report 中明确当前策略是严格比较，而不是缺少 `tbt_ms` 阈值。
+
+## Baseline Store 流程
+
+baseline 分支：`benchmark-baselines`。
+
+推荐结构：
+
+```text
+benchmark-baselines
+├── baselines/<commit>/run_leaderboard.json
+├── latest-main.json
+└── latest-main-pointer.json
 ```
 
-**步骤 3：checkout 完整历史**
+### PR 读取
 
-与 demo 保持一致：
+- PR 只读 baseline，不 push baseline。
+- Stage 1 默认读取 `baselines/<fork_point>/run_leaderboard.json`。
+- Stage 2 读取 `baselines/<M2>/run_leaderboard.json`。
+- fork-point baseline 默认 fail-closed；如允许 fallback 到 `latest-main`，必须由 `PERFGATE_ALLOW_BASELINE_FALLBACK` 显式控制，并在 report/comment 中显示 baseline source。
+- Stage 2 的 M2 baseline source 使用独立 env，例如 `PERFGATE_STAGE2_M2_BASELINE_SOURCE`，不要覆盖 Stage 1 baseline env。
 
-```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0
-    ref: ${{ github.event.pull_request.head.sha || github.sha }}
-```
+### main 写入
 
-**步骤 4：运行生产 gate 脚本**
+- 只有 `push` 到 `refs/heads/main` 后可以写 `benchmark-baselines`。
+- baseline store 必须先校验 `run_leaderboard.json`：JSON 可解析、`metrics` 完整、`throughput_tps/ttft_ms/tbt_ms` 是 finite number、same-spec 与 gate spec 匹配。
+- baseline push 权限必须在代码侧闭环，不能只靠文档假设。
+- 推荐把 baseline store 拆成独立 job：benchmark job 只需要 `contents: read`，baseline store job 使用 `needs: ascend-benchmark`、`permissions.contents: write`、`actions: read`，下载 benchmark artifact 后用 `GITHUB_TOKEN` push `benchmark-baselines`。
+- 如果使用 SSH/PAT 代替 `GITHUB_TOKEN`，必须使用单独写权限 secret，且不能在日志打印带 token 的 remote URL。
 
-可以改造 `scripts/run_two_stage_gate.sh`，当 `ASCEND_GATE_MODE=real` 时选择生产 runner；也可以新增 `scripts/run_two_stage_gate_real.sh`。
+## Fork PR 策略
 
-推荐 env：
+不要在带 secrets 或硬件权限的 Ascend runner 上执行不可信 fork PR 代码，也不要依赖 skipped job 语义作为安全边界。
 
-```yaml
-- name: Run Ascend two-stage gate
-  env:
-    PR_BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
-    PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-    GATE_ROOT: ${{ github.workspace }}/.gate-results
-    ASCEND_GATE_MODE: real
-    ASCEND_GATE_MODEL: ${{ vars.ASCEND_GATE_MODEL || 'Qwen/Qwen2.5-7B-Instruct' }}
-    ASCEND_GATE_OUTPUT_TPS_MIN_RATIO: ${{ vars.ASCEND_GATE_OUTPUT_TPS_MIN_RATIO || '0.97' }}
-    ASCEND_GATE_REQUEST_TPS_MIN_RATIO: ${{ vars.ASCEND_GATE_REQUEST_TPS_MIN_RATIO || '0.97' }}
-    ASCEND_GATE_MEAN_TTFT_MAX_RATIO: ${{ vars.ASCEND_GATE_MEAN_TTFT_MAX_RATIO || '1.05' }}
-  run: bash scripts/run_two_stage_gate_real.sh
-```
+推荐策略：
 
-**步骤 5：上传 summary 与 artifacts**
+1. same-repo PR：运行完整 Ascend benchmark gate。
+2. fork PR：不运行 trusted hardware gate；必须由维护者把改动转成同仓可信分支后重跑，或配置一个单独 required blocker check 明确提示不可直接合并。
+3. branch protection / ruleset 中 required check 名称应使用实际 workflow/job 名称，不写死旧独立 workflow 名称。
 
-保留现有 artifact 模式：
+## vLLM server 安全与生命周期
 
-```yaml
-- name: Publish gate summary
-  if: always()
-  run: |
-    if [[ -f .gate-results/summary.md ]]; then
-      cat .gate-results/summary.md >> "$GITHUB_STEP_SUMMARY"
-    fi
+- 默认不要在 trusted runner 示例中加入 `--trust-remote-code`。
+- 如果确实需要 `--trust-remote-code`，必须限定 allowlisted model、pinned revision 或预热 cache，并把模型供应链风险与 PR 代码信任边界分开说明。
+- ready check 必须在 timeout 后显式失败，不能循环结束后继续执行。
+- cleanup 应尽量处理进程组、子进程和端口残留。
+- 失败时上传 server log、benchmark log、raw artifact、perfgate report。
 
-- name: Upload gate artifacts
-  if: always()
-  uses: actions/upload-artifact@v4
-  with:
-    name: ascend-two-stage-gate-results
-    path: .gate-results/
-    include-hidden-files: true
-    if-no-files-found: warn
-```
-
-**步骤 6：提交**
+ready check 示例：
 
 ```bash
-git add .github/workflows/ascend-two-stage-gate.yml scripts/run_two_stage_gate_real.sh
-git commit -m "ci: add ascend two-stage benchmark gate workflow"
-```
-
----
-
-## 任务 4：增加 vLLM Server 生命周期管理
-
-**目标：** 确保每个被 benchmark 的 commit 都能启动可用 vLLM server，并在结束后清理。
-
-**文件：**
-
-- 新增：`scripts/start_vllm_ascend_server.sh`
-- 修改：`scripts/run_two_stage_gate_real.sh`
-
-**步骤 1：每个 checked-out commit 启动 server**
-
-如果 vLLM Ascend 需要额外 env，使用项目真实命令。示例形态：
-
-```bash
-VLLM_USE_MODELSCOPE=${VLLM_USE_MODELSCOPE:-False}
-python3 -m vllm.entrypoints.openai.api_server \
-  --model "$ASCEND_GATE_MODEL" \
-  --host 127.0.0.1 \
-  --port "${ASCEND_GATE_PORT:-8000}" \
-  --trust-remote-code
-```
-
-**步骤 2：ready check**
-
-轮询 `/v1/models`：
-
-```bash
+ready=0
 for i in $(seq 1 120); do
-  curl -fsS "http://127.0.0.1:${ASCEND_GATE_PORT:-8000}/v1/models" && break
+  if curl -fsS "http://127.0.0.1:${ASCEND_GATE_PORT:-8000}/v1/models" >/dev/null; then
+    ready=1
+    break
+  fi
   sleep 5
 done
+if [[ "$ready" != "1" ]]; then
+  echo "vLLM server did not become ready before timeout" >&2
+  exit 1
+fi
 ```
 
-超过 timeout 仍未 ready，则失败退出。
-
-**步骤 3：cleanup trap**
+cleanup 示例：
 
 ```bash
 cleanup() {
   if [[ -n "${VLLM_PID:-}" ]]; then
-    kill "$VLLM_PID" || true
-    wait "$VLLM_PID" || true
+    kill -- -"$VLLM_PID" 2>/dev/null || kill "$VLLM_PID" 2>/dev/null || true
+    wait "$VLLM_PID" 2>/dev/null || true
   fi
 }
 trap cleanup EXIT
 ```
 
-**步骤 4：在 runner 上验证**
+## 实施任务
 
-对一个已知 commit 手动触发 workflow。预期 artifacts：
+### 任务 1：确认 small same-spec 与 benchmark artifact
 
-- `.gate-results/m1.json`
-- `.gate-results/b1.json`
-- `.gate-results/m2.json`
-- `.gate-results/b1-prime.json`
-- `.gate-results/raw/` 下的原始 vLLM logs
-- `summary.md`
+- 在 `vllm-hust-benchmark` 中维护 gate spec，例如 `docs/official-baselines/perfgate-ascend-qwen25-05b-910b3.json`。
+- 确保 `run_leaderboard.json` 输出包含 gate 需要的 `metrics` 与 `same_spec` 字段。
+- 用 synthetic pass/fail fixture 覆盖：PASS、throughput fail、TTFT fail、TBT fail、missing metric、spec mismatch、hash mismatch。
 
-**步骤 5：提交**
+### 任务 2：集成现有 leaderboard workflow
 
-```bash
-git add scripts/start_vllm_ascend_server.sh scripts/run_two_stage_gate_real.sh
-git commit -m "ci: manage vllm server lifecycle for ascend gate"
-```
+- 修改 `.github/workflows/ascend-benchmark-leaderboard.yml`，不要新增 parallel gate workflow。
+- same-repo PR 跑 Stage 1/2 gate 并评论。
+- fork PR 走显式安全提示/阻塞策略。
+- `push: main` 跑 benchmark 后写 baseline。
+- `workflow_dispatch` 默认只跑 benchmark/report，不写 baseline。
 
----
+### 任务 3：Stage 1 / Stage 2 控制流
 
-## 任务 5：只发布已合并 Accepted Results
+- Stage 1 compare 用 enforce 语义得出 `pass|fail|unknown`，但脚本自身始终 exit 0，让 final compare/report 总能运行。
+- `PERFGATE_MODE=enforce` 且 Stage 1 FAIL 时跳过 Stage 2 benchmark，节省硬件。
+- final compare 必须处理：normal Stage 2、`SKIPPED`、rebase conflict、`NOT RUN`。
+- `NOT RUN` 在 enforce 下 fail-closed。
 
-**目标：** 保证官方 leaderboard/Page 数据只包含 merged PASS results。
+### 任务 4：Baseline fetch/store
 
-**文件：**
+- PR read-only fetch baseline。
+- main-only store baseline。
+- baseline 缺失策略显式化。
+- baseline store 使用独立 write-permission job 或受控写权限 secret。
+- store 前校验 artifact 与 gate identity。
 
-- 修改或新增：`.github/workflows/ascend-pages-publish.yml`
-- 修改：`scripts/export_accepted_frontend.py` 或生产等价脚本
+### 任务 5：PR comment 与 artifacts
 
-**步骤 1：只在 main 触发**
+- PR comment 显示 Stage 1/2 状态、baseline source、same-spec ID/hash、关键指标、失败原因。
+- 即使 benchmark/gate 失败，也上传 raw logs、`run_leaderboard.json`、perfgate markdown report、rebase conflict details。
 
-```yaml
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-```
+### 任务 6：Branch protection / required checks
 
-**步骤 2：复用或重跑合并提交 metrics**
+- 使用实际 workflow/job 名作为 required check。
+- 明确 fork PR 不可通过 skipped hardware job 放行。
+- 在 `PERFGATE_MODE=report` 期间不要把性能 check 设为强制阻塞；切到 `enforce` 后再启用 required check。
 
-方案 A：main 上再跑一次短 benchmark 作为 accepted benchmark。
+### 任务 7：生产验证矩阵
 
-方案 B：如果生产仓库持久化了合并结果，则导出 merged commit 对应的已保存结果。
-
-除非 benchmark 成本太高，建议先用方案 A：更简单，也避免信任过期 PR artifact。
-
-**步骤 3：写 accepted record**
-
-输出 schema 与 demo 前端保持兼容：
-
-```json
-{
-  "schemaVersion": "ascend-merged-benchmark/v1",
-  "records": [
-    {
-      "id": "merged-<sha>",
-      "finalStatus": "PASS",
-      "rebaseStatus": "merged",
-      "source": { "branch": "main", "sha": "<sha>", "runUrl": "<actions run>" },
-      "metrics": { "outputThroughput": 0, "requestThroughput": 0, "meanTtftMs": 0, "failed": 0 }
-    }
-  ]
-}
-```
-
-**步骤 4：提交**
-
-```bash
-git add .github/workflows/ascend-pages-publish.yml scripts/export_accepted_frontend.py
-git commit -m "ci: publish only merged ascend benchmark results"
-```
-
----
-
-## 任务 6：配置 Branch Protection / Required Checks
-
-**目标：** 让 Ascend gate 成为强制门禁，而不只是信息提示。
-
-**文件：**
-
-- GitHub 仓库设置，不是代码文件。
-- 可选文档：`docs/branch-protection.md`
-
-**步骤 1：添加 required status check**
-
-在 GitHub Settings -> Branches -> main protection 中：
-
-- 开启 Require status checks to pass before merging。
-- 添加 `Ascend two-stage benchmark gate / two-stage-gate`。
-- 视情况开启 Require branches to be up to date。
-
-**步骤 2：明确 admin bypass 策略**
-
-文档中说明 runner 故障时维护者是否可以绕过 benchmark。
-
-**步骤 3：提交文档**
-
-```bash
-git add docs/branch-protection.md
-git commit -m "docs: document ascend gate branch protection"
-```
-
----
-
-## 任务 7：生产验证矩阵
-
-**目标：** 在真实仓库里用真实 benchmark 复现 demo 证明链路。
-
-**文件：**
-
-- 新增：`docs/ascend-gate-verification.md`
-
-**验证 PR：**
-
-| 场景 | 预期 | 说明 |
-|---|---|---|
-| PASS smoke PR | 绿色 | 小的不退化改动，或阈值安全 fixture。 |
-| Stage 1 regression | 红色 | 人为降低吞吐，或增加已知慢路径。 |
-| Stage 2 regression | 红色 | PR 相对旧基线通过，但 latest main 提升后失败。 |
-| Request failure | 红色 | 强制 benchmark 请求失败或错误 serving 配置。 |
-| Rebase conflict | 红色 | 冲突改动确认 manual rebase 提示。 |
-
-**命令/检查：**
-
-```bash
-bash -n scripts/*.sh
-python3 -m py_compile scripts/*.py
-python3 -m json.tool .gate-results/*.json
-```
-
-**预期证明：**
-
-- 失败 PR 在 Pull requests 和 Actions 中可见。
-- PASS PR 可以 merge。
-- merge 后 main publish workflow 运行。
-- 公开 leaderboard/Page 只包含 merged PASS records。
-
----
-
-## 任务 8：运维 Runbook
-
-**目标：** 给维护者一份简短排障指南。
-
-**文件：**
-
-- 新增：`docs/ascend-gate-runbook.md`
-
-**包含：**
-
-- Runner offline / busy。
-- vLLM server 启动失败。
-- 模型下载/cache miss。
-- Hugging Face 或 ModelScope 网络问题。
-- benchmark JSON 缺字段。
-- rebase 冲突。
-- Stage 1 fail 和 Stage 2 fail 如何解读。
-- 如何 rerun failed jobs。
-- 如何临时用 repo variables 放宽阈值。
-- 如何查看 `.gate-results` artifacts。
-
----
-
-## 实施顺序
-
-1. 新增生产 benchmark normalizer，并用 fixture 测试。
-2. 参数化门禁阈值。
-3. 新增真实 self-hosted Ascend workflow。
-4. 增加 server 生命周期管理与清理。
-5. 新增 merged-only 发布 workflow。
-6. 配置 required checks。
-7. 跑生产验证矩阵。
-8. 发布 runbook。
+| 场景 | 预期 |
+|---|---|
+| PASS smoke PR | Stage 1 PASS，Stage 2 PASS，job green |
+| Stage 1 regression | Stage 1 FAIL，Stage 2 NOT RUN，job red |
+| Stage 2 regression | Stage 1 PASS，Stage 2 FAIL，job red |
+| Request/runtime failure | report 可见，job red |
+| Rebase conflict | Stage 2 rebase conflict，job red |
+| Missing baseline | fail-closed 或显式 fallback，report 显示 source |
+| Fork PR | 不跑 trusted hardware，不能静默满足合并门禁 |
+| main push | 生成并 push `benchmark-baselines` |
 
 ## 验收标准
 
-- 真实 PR 能生成 `.gate-results/summary.md`，包含 M1/B1/M2/B1' commits 和指标表。
-- Stage 1 失败会在 rebase 前失败。
-- Stage 2 失败会显示 Stage 1 PASS、Stage 2 FAIL。
-- 请求失败时，即使吞吐指标看起来正常，也会 FAIL。
-- workflow 使用可信 self-hosted Ascend runner，不在带 secrets/硬件权限的 runner 上执行不可信 fork PR 代码。
-- main 分支发布内容只包含 merged PASS records。
-- branch protection 要求真实 gate check 通过后才能合并。
+- PR report 清楚显示 M1/B1/M2/B1' commits、baseline source、same-spec、Stage 1/2 结果。
+- Stage 1 FAIL 不会吞掉 final report。
+- Stage 2 未运行不会被误标为 SKIPPED，除非 `fork_point == M2`。
+- main baseline store 可以真实 push 到 `benchmark-baselines`，权限模型在 workflow 代码中闭环。
+- `run_leaderboard.json` 是唯一主判定 artifact；不存在并行独立 gate schema。
+- fork PR 不会因为 skipped hardware job 被静默放行。
+- trusted runner 示例默认不启用 `--trust-remote-code`。
 
 ## 编码前需要确认的输入
 
-正式实现前需要确认：
-
-1. 真实仓库路径和默认分支。
-2. self-hosted runner labels。
-3. vLLM Ascend 启动命令和必需环境变量。
-4. 模型 cache 位置和模型下载策略。
-5. 首选 smoke model 和 prompt size。
-6. main publish 是重跑 benchmark，还是复用已持久化 merged result。
-7. runner 故障时的 branch protection/bypass 策略。
+1. self-hosted runner labels。
+2. Ascend runtime / vLLM 启动命令和必需环境变量。
+3. 模型 cache 位置和下载策略。
+4. 是否允许 baseline fallback，以及 fallback 在 `enforce` 模式下是否仍 fail-closed。
+5. branch protection required check 的实际 workflow/job 名称。
+6. baseline store 使用 `GITHUB_TOKEN contents: write` 独立 job，还是受控 SSH/PAT secret。
