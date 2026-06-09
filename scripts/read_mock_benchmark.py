@@ -29,6 +29,10 @@ DEFAULT_METRICS: dict[str, Any] = {
 
 
 def read_payload(path: Path) -> dict[str, Any]:
+    override = Path("benchmark-metrics.override.json")
+    if override.is_file():
+        print(f"using PR-local mock benchmark override: {override}")
+        path = override
     if not path.is_file():
         print(f"mock benchmark file not found in checked-out commit: {path}; using DEFAULT_METRICS")
         return dict(DEFAULT_METRICS)

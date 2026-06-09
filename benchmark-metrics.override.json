@@ -1,0 +1,9 @@
+{
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "scenario": "random-online-stage-2-regression-demo",
+  "hardware": "Ascend 910B3 mock via GitHub Actions",
+  "request_throughput": 0.93,
+  "output_throughput": 238.0,
+  "mean_ttft_ms": 370.0,
+  "failed": 0
+}
